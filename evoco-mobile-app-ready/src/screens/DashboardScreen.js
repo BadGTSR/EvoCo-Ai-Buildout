@@ -8,9 +8,8 @@ function minutesToHours(mins) {
   return (mins / 60).toFixed(1);
 }
 
-export default function DashboardScreen({ navigation, route }) {
-  const { site } = route.params || {};
-  const { user } = useAuth();
+export default function DashboardScreen({ navigation }) {
+  const { user, activeSite: site } = useAuth();
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

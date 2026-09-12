@@ -11,6 +11,9 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Survives the pre-auth -> authenticated navigator swap, unlike route params:
+  // the whole pre-auth stack (and any params on it) unmounts the moment `user` becomes truthy.
+  const [activeSite, setActiveSite] = useState(null);
 
   useEffect(() => {
     initOfflineDb();
@@ -28,7 +31,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, activeSite, setActiveSite }}>
       {children}
     </AuthContext.Provider>
   );

@@ -17,7 +17,7 @@ const QUESTIONS = [
 
 export default function HsQuestionnaireScreen({ route, navigation }) {
   const { site } = route.params;
-  const { user } = useAuth();
+  const { user, setActiveSite } = useAuth();
   const [answers, setAnswers] = useState({});
 
   const allAnswered = QUESTIONS.every((q) => answers[q.key] !== undefined);
@@ -28,6 +28,7 @@ export default function HsQuestionnaireScreen({ route, navigation }) {
   }
 
   function handleSubmit() {
+    setActiveSite(site);
     checkIn({ userId: user.uid, site, hsAnswers: answers });
     startGeofenceWatch(site, () => {
       // Auto-checkout fires from here when the worker leaves the geofence.
