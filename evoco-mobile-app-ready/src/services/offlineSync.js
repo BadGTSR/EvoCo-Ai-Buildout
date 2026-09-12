@@ -113,3 +113,20 @@ export function getPendingCount() {
   );
   return result?.count ?? 0;
 }
+
+/**
+ * Not-yet-synced writes for a collection, so screens can show what was just
+ * logged offline instead of only what's already made it to Firestore.
+ * Each record gets a local id and a `createdAt` (the time it was queued,
+ * standing in for the serverTimestamp it won't have until it syncs).
+ */
+export function getPendingWrites(collectionName) {
+  const rows = database.getAllSync(
+    `SELECT * FROM pending_writes WHERE collection_name = ? AND synced = 0 ORDER BY id DESC;`,
+    [collectionName]
+  );
+  return rows.map((row) => {
+    const payload = JSON.parse(row.payload);
+    return { id: `pending_${row.id}`, ...payload, createdAt: payload._queuedAt, _pending: true };
+  });
+}

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { colors, spacing } from '../theme';
 import { getEntriesForDate } from '../services/timesheetService';
+import { getPendingCount } from '../services/offlineSync';
 import { useAuth } from '../context/AuthContext';
 
 function minutesToHours(mins) {
@@ -13,6 +14,7 @@ export default function DashboardScreen({ navigation }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -20,6 +22,7 @@ export default function DashboardScreen({ navigation }) {
     if (!user) return;
     const data = await getEntriesForDate(user.uid, today);
     setEntries(data);
+    setPendingCount(getPendingCount());
   }, [user, today]);
 
   useEffect(() => {
@@ -48,6 +51,14 @@ export default function DashboardScreen({ navigation }) {
     >
       <Text style={styles.greeting}>G'day{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''}</Text>
       <Text style={styles.siteLabel}>{site?.siteName || 'On site'}</Text>
+
+      {pendingCount > 0 && (
+        <View style={styles.syncBanner}>
+          <Text style={styles.syncBannerText}>
+            {pendingCount} {pendingCount === 1 ? 'entry' : 'entries'} waiting to sync
+          </Text>
+        </View>
+      )}
 
       <View style={styles.hoursCard}>
         <Text style={styles.hoursLabel}>Hours today</Text>
@@ -92,6 +103,16 @@ const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingTop: spacing.xl },
   greeting: { color: '#fff', fontSize: 22, fontWeight: '700' },
   siteLabel: { color: colors.accent, fontSize: 14, marginTop: 2, marginBottom: spacing.lg },
+  syncBanner: {
+    backgroundColor: 'rgba(242,169,31,0.1)',
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  syncBannerText: { color: colors.accent, fontSize: 12.5, fontWeight: '600' },
   hoursCard: {
     backgroundColor: colors.surface,
     borderRadius: 12,

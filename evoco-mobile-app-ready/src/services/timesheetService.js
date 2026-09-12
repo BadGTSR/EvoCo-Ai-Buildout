@@ -10,7 +10,14 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
-import { queueWrite } from './offlineSync';
+import { queueWrite, getPendingWrites } from './offlineSync';
+
+/** Firestore Timestamp or plain ISO string (from a not-yet-synced local write) -> comparable millis. */
+function toMillis(createdAt) {
+  if (!createdAt) return 0;
+  if (typeof createdAt.toMillis === 'function') return createdAt.toMillis();
+  return new Date(createdAt).getTime();
+}
 
 const BREAK_TYPES = {
   PAID_BREAK: { entryType: 'paid_break', label: 'Paid Break', minutes: 30 },
@@ -106,7 +113,13 @@ export async function getMyBackdateRequests(userId) {
     orderBy('createdAt', 'desc')
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const synced = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  // Include requests still sitting in the offline queue — otherwise one
+  // logged with no signal is invisible until it happens to sync.
+  const pending = getPendingWrites('backdateRequests').filter((r) => r.userId === userId);
+
+  return [...synced, ...pending].sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
 }
 
 /** Get all entries for a user on a given date — for the daily summary screen */
@@ -117,7 +130,15 @@ export async function getEntriesForDate(userId, date) {
     where('date', '==', date)
   );
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const synced = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  // Same reason as above: a work/break entry logged offline needs to show
+  // up straight away, not just once it's made it to Firestore.
+  const pending = getPendingWrites('timesheetEntries').filter(
+    (e) => e.userId === userId && e.date === date
+  );
+
+  return [...synced, ...pending];
 }
 
 export { BREAK_TYPES };

@@ -67,6 +67,9 @@ export default function DailySummaryScreen({ navigation, route }) {
                 {item.isBackdated && (
                   <Text style={styles.backdatedTag}>Pending approval</Text>
                 )}
+                {item._pending && (
+                  <Text style={styles.backdatedTag}>Syncing…</Text>
+                )}
               </View>
               {item.photoUrls?.length > 0 && (
                 <Text style={styles.photoCount}>📷 {item.photoUrls.length}</Text>
