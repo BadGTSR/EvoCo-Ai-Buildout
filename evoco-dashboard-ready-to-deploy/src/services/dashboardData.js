@@ -9,6 +9,7 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   query,
   where,
@@ -141,19 +142,34 @@ export async function getEntriesForUserWeek(userId, weekStartISO, weekEndISO) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-/** Approve or query a worker's whole week — creates/updates the weeklyApprovals doc. */
+/** Which userIds already have an approved week for this weekEndDate. */
+export async function getWeekApprovals(weekEndISO) {
+  const q = query(
+    collection(db, "weeklyApprovals"),
+    where("weekEndDate", "==", weekEndISO),
+    where("approvalStatus", "==", "approved")
+  );
+  const snap = await getDocs(q);
+  return new Set(snap.docs.map((d) => d.data().userId));
+}
+
+/** Approve or query a worker's whole week — one weeklyApprovals doc per user per week (upsert, no duplicates). */
 export async function setWeekApprovalStatus({ managerId, userId, weekEndDate, status, timesheetEntryIds, totalHours, notes }) {
-  return addDoc(collection(db, "weeklyApprovals"), {
-    managerId,
-    userId,
-    weekEndDate,
-    approvalStatus: status,
-    timesheetEntryIds,
-    totalHours,
-    notes: notes || "",
-    approvedAt: status === "approved" ? serverTimestamp() : null,
-    createdAt: serverTimestamp(),
-  });
+  return setDoc(
+    doc(db, "weeklyApprovals", `${userId}_${weekEndDate}`),
+    {
+      managerId,
+      userId,
+      weekEndDate,
+      approvalStatus: status,
+      timesheetEntryIds,
+      totalHours,
+      notes: notes || "",
+      approvedAt: status === "approved" ? serverTimestamp() : null,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
 // ---------- Backdate Requests ----------

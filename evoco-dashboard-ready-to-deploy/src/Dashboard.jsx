@@ -205,10 +205,11 @@ function Approvals() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [byUser, staff, projects] = await Promise.all([
+    const [byUser, staff, projects, approvedUserIds] = await Promise.all([
       api.getWeekTimesheets(week.start, week.end),
       api.getStaff(),
       api.getProjects(),
+      api.getWeekApprovals(week.end),
     ]);
     const projMap = {};
     projects.forEach((p) => { projMap[p.id] = p; });
@@ -219,13 +220,12 @@ function Approvals() {
       const workEntries = entries.filter((e) => e.entryType === "work");
       const totalHours = workEntries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0) / 60;
       const projectId = entries[0]?.projectId;
-      const anyPending = entries.every((e) => !e._approved); // placeholder until approval status is joined per-entry
       return {
         userId,
         name: person.displayName || person.email || userId,
         projectCode: projMap[projectId]?.projectCode || "—",
         hours: totalHours,
-        status: anyPending ? "pending" : "approved",
+        status: approvedUserIds.has(userId) ? "approved" : "pending",
         entries,
       };
     });
