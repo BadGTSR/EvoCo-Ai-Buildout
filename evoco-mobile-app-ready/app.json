@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "EvoCo Timesheets",
+    "slug": "evoco-timesheets",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.evoco.evocotimesheets",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "EvoCo needs camera access to scan site QR codes for check-in.",
+        "NSLocationWhenInUseUsageDescription": "EvoCo needs your location to confirm you're on-site."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.evoco.evocotimesheets",
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ad75684f-c0ee-487e-a103-611068a741d4"
+      }
+    }
+  }
+}

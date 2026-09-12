@@ -1,0 +1,630 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2 } from "lucide-react";
+import { useAuth } from "./context/AuthContext";
+import * as api from "./services/dashboardData";
+import LoginScreen from "./LoginScreen";
+
+const C = {
+  bg: "#141414",
+  bgPanel: "#1a1a1a",
+  bgCard: "#1e1e1e",
+  bgCardAlt: "#242424",
+  amber: "#f2a91f",
+  amberDim: "#8a6414",
+  white: "#ffffff",
+  grey: "#9a9a9a",
+  greyDim: "#5c5c5c",
+  border: "#2c2c2c",
+  good: "#4caf7d",
+  warn: "#e0a33f",
+};
+
+/** Monday–Sunday ISO bounds for "this week", used by Overview and Approvals */
+function getCurrentWeekBounds() {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const iso = (d) => d.toISOString().split("T")[0];
+  return { start: iso(monday), end: iso(sunday), label: `${monday.toLocaleDateString("en-NZ", { day: "numeric", month: "short" })}–${sunday.toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}` };
+}
+
+function LoadingBlock() {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 60, color: C.grey }}>
+      <Loader2 size={20} style={{ animation: "spin 1s linear infinite", marginRight: 10 }} />
+      Loading…
+      <style>{"@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }"}</style>
+    </div>
+  );
+}
+
+function Sidebar({ view, setView }) {
+  const { profile } = useAuth();
+  const items = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "approvals", label: "Weekly Approvals", icon: FileCheck },
+    { id: "projects", label: "Projects & Variations", icon: FolderKanban },
+    { id: "qr", label: "Site QR Codes", icon: QrCode },
+    { id: "team", label: "Team", icon: Users },
+  ];
+  return (
+    <div style={{ width: 220, background: C.bgPanel, borderRight: `1px solid ${C.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
+      <div style={{ padding: "24px 20px", fontSize: 20, fontWeight: 800, letterSpacing: 1 }}>
+        <span style={{ color: C.white }}>EVO</span>
+        <span style={{ color: C.amber }}>·CO</span>
+      </div>
+      <div style={{ padding: "0 20px", color: C.greyDim, fontSize: 11, letterSpacing: 1.5, marginBottom: 10 }}>DASHBOARD</div>
+      <div style={{ flex: 1 }}>
+        {items.map((it) => (
+          <div
+            key={it.id}
+            onClick={() => setView(it.id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "11px 20px",
+              cursor: "pointer",
+              color: view === it.id ? C.amber : C.grey,
+              background: view === it.id ? "rgba(242,169,31,0.08)" : "transparent",
+              borderLeft: `3px solid ${view === it.id ? C.amber : "transparent"}`,
+              fontSize: 13.5,
+              fontWeight: view === it.id ? 700 : 500,
+            }}
+          >
+            <it.icon size={17} />
+            {it.label}
+          </div>
+        ))}
+      </div>
+      <div style={{ padding: 20, borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.amber, display: "flex", alignItems: "center", justifyContent: "center", color: "#1a1400", fontWeight: 800, fontSize: 13 }}>
+          {(profile?.displayName || "A")[0]}
+        </div>
+        <div>
+          <div style={{ color: C.white, fontSize: 12.5, fontWeight: 600 }}>{profile?.displayName || "Andre"}</div>
+          <div style={{ color: C.greyDim, fontSize: 10.5 }}>Manager</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Topbar({ title }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px", borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ color: C.white, fontSize: 20, fontWeight: 700 }}>{title}</div>
+      <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+        <div style={{ position: "relative" }}>
+          <Search size={15} color={C.greyDim} style={{ position: "absolute", left: 10, top: 9 }} />
+          <input placeholder="Search..." style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px 8px 32px", color: C.white, fontSize: 13, width: 200 }} />
+        </div>
+        <Bell size={18} color={C.grey} />
+        <Settings size={18} color={C.grey} />
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, color }) {
+  return (
+    <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, flex: 1 }}>
+      <div style={{ color: C.grey, fontSize: 12 }}>{label}</div>
+      <div style={{ color: color || C.white, fontSize: 28, fontWeight: 800, marginTop: 6 }}>{value}</div>
+      {sub && <div style={{ color: C.greyDim, fontSize: 11, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const map = {
+    pending: { color: C.warn, bg: "rgba(224,163,63,0.12)", label: "Pending" },
+    approved: { color: C.good, bg: "rgba(76,175,125,0.12)", label: "Approved" },
+    queried: { color: "#e0736d", bg: "rgba(224,115,109,0.12)", label: "Queried" },
+  };
+  const s = map[status];
+  return (
+    <span style={{ color: s.color, background: s.bg, padding: "4px 10px", borderRadius: 6, fontSize: 11.5, fontWeight: 700 }}>
+      {s.label}
+    </span>
+  );
+}
+
+function Overview() {
+  const [stats, setStats] = useState(null);
+  const [weekHours, setWeekHours] = useState(null);
+  const [backdateRequests, setBackdateRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const { start, end } = getCurrentWeekBounds();
+
+    Promise.all([api.getOverviewStats(), api.getWeekTimesheets(start, end), api.getPendingBackdateRequests()])
+      .then(([overview, byUser, requests]) => {
+        if (!active) return;
+        const totalMinutes = Object.values(byUser)
+          .flat()
+          .filter((e) => e.entryType === "work")
+          .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+        setStats(overview);
+        setWeekHours((totalMinutes / 60).toFixed(0));
+        setBackdateRequests(requests);
+        setLoading(false);
+      })
+      .catch(() => active && setLoading(false));
+
+    return () => { active = false; };
+  }, []);
+
+  if (loading) return <LoadingBlock />;
+
+  return (
+    <div style={{ padding: 32 }}>
+      <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+        <StatCard label="Active Projects" value={stats?.activeProjectCount ?? "—"} />
+        <StatCard label="Hours This Week" value={weekHours ?? "—"} sub="Across all staff" />
+        <StatCard label="Pending Approvals" value={stats?.pendingApprovalCount ?? "—"} color={C.warn} />
+        <StatCard label="Open Backdate Requests" value={stats?.openBackdateRequestCount ?? "—"} color={C.warn} />
+      </div>
+
+      <div style={{ color: C.white, fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Recent Activity</div>
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        {backdateRequests.length === 0 ? (
+          <div style={{ padding: "18px", color: C.greyDim, fontSize: 13 }}>No recent activity to show.</div>
+        ) : (
+          backdateRequests.map((r, i) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: i < backdateRequests.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <AlertCircle size={16} color={C.warn} />
+              <div style={{ flex: 1, color: C.white, fontSize: 13 }}>Backdate request for {r.requestedDate} · {(r.durationMinutes / 60).toFixed(1)}h</div>
+              <div style={{ color: C.greyDim, fontSize: 11.5 }}>Pending</div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function Approvals() {
+  const { profile } = useAuth();
+  const [rows, setRows] = useState([]);
+  const [projectsByCode, setProjectsByCode] = useState({});
+  const [selected, setSelected] = useState(null);
+  const [selectedEntries, setSelectedEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const week = getCurrentWeekBounds();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const [byUser, staff, projects] = await Promise.all([
+      api.getWeekTimesheets(week.start, week.end),
+      api.getStaff(),
+      api.getProjects(),
+    ]);
+    const projMap = {};
+    projects.forEach((p) => { projMap[p.id] = p; });
+    setProjectsByCode(projMap);
+
+    const built = Object.entries(byUser).map(([userId, entries]) => {
+      const person = staff.find((s) => s.id === userId) || { displayName: "Unknown", id: userId };
+      const workEntries = entries.filter((e) => e.entryType === "work");
+      const totalHours = workEntries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0) / 60;
+      const projectId = entries[0]?.projectId;
+      const anyPending = entries.every((e) => !e._approved); // placeholder until approval status is joined per-entry
+      return {
+        userId,
+        name: person.displayName || person.email || userId,
+        projectCode: projMap[projectId]?.projectCode || "—",
+        hours: totalHours,
+        status: anyPending ? "pending" : "approved",
+        entries,
+      };
+    });
+    setRows(built);
+    setLoading(false);
+  }, [week.start, week.end]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const approve = async (row) => {
+    setBusyId(row.userId);
+    await api.setWeekApprovalStatus({
+      managerId: profile?.uid,
+      userId: row.userId,
+      weekEndDate: week.end,
+      status: "approved",
+      timesheetEntryIds: row.entries.map((e) => e.id),
+      totalHours: row.hours,
+    });
+    setRows((prev) => prev.map((r) => (r.userId === row.userId ? { ...r, status: "approved" } : r)));
+    setBusyId(null);
+  };
+
+  const openDetail = (row) => {
+    setSelected(row);
+    setSelectedEntries(row.entries.slice().sort((a, b) => new Date(a.startTime) - new Date(b.startTime)));
+  };
+
+  if (loading) return <LoadingBlock />;
+
+  return (
+    <div style={{ padding: 32 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>Week of {week.label}</div>
+          <div style={{ color: C.grey, fontSize: 12 }}>Sign-off due Friday</div>
+        </div>
+      </div>
+
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1.2fr", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, color: C.greyDim, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+          <div>Staff</div><div>Project</div><div>Hours</div><div>Status</div><div></div>
+        </div>
+        {rows.length === 0 && (
+          <div style={{ padding: 18, color: C.greyDim, fontSize: 13 }}>No timesheet entries logged for this week yet.</div>
+        )}
+        {rows.map((t) => (
+          <div key={t.userId} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1.2fr", padding: "16px 18px", alignItems: "center", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.bgCardAlt, display: "flex", alignItems: "center", justifyContent: "center", color: C.grey, fontSize: 12, fontWeight: 700 }}>
+                {t.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+              </div>
+              <span style={{ color: C.white, fontSize: 13.5, fontWeight: 600 }}>{t.name}</span>
+            </div>
+            <div style={{ color: C.grey, fontSize: 13 }}>{t.projectCode}</div>
+            <div style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>{t.hours.toFixed(1)}h</div>
+            <div><StatusBadge status={t.status} /></div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => openDetail(t)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>View</button>
+              {t.status === "pending" && (
+                <button onClick={() => approve(t)} disabled={busyId === t.userId} style={{ background: "rgba(76,175,125,0.12)", border: `1px solid ${C.good}`, color: C.good, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600, opacity: busyId === t.userId ? 0.6 : 1 }}>
+                  {busyId === t.userId ? "…" : "Approve"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selected && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setSelected(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 460, padding: 26 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+              <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>{selected.name} — {selected.projectCode}</div>
+              <X size={18} color={C.grey} style={{ cursor: "pointer" }} onClick={() => setSelected(null)} />
+            </div>
+            {selectedEntries.length === 0 ? (
+              <div style={{ color: C.greyDim, fontSize: 13, padding: "10px 0" }}>No entries this week.</div>
+            ) : (
+              selectedEntries.map((e, i) => (
+                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < selectedEntries.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 13, color: C.grey }}>
+                  <span>{DAY_LABELS[new Date(e.startTime).getDay()]}</span>
+                  <span style={{ color: C.white }}>{e.entryType === "work" ? "Work" : e.entryType.replace("_", " ")}</span>
+                  <span style={{ color: C.amber, fontWeight: 600 }}>{((e.durationMinutes || 0) / 60).toFixed(1)}h</span>
+                </div>
+              ))
+            )}
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button onClick={() => { approve(selected); setSelected(null); }} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer" }}>Approve Week</button>
+              <button onClick={() => setSelected(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Query</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectsAndVariations() {
+  const [projects, setProjects] = useState([]);
+  const [stagesByProject, setStagesByProject] = useState({});
+  const [expanded, setExpanded] = useState(null);
+  const [showAdd, setShowAdd] = useState(null); // holds project id
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ description: "", value: "", status: "pending" });
+  const [saving, setSaving] = useState(false);
+
+  const loadStages = useCallback(async (projectId) => {
+    const stages = await api.getStagesForProject(projectId);
+    setStagesByProject((prev) => ({ ...prev, [projectId]: stages.filter((s) => s.isVariation) }));
+  }, []);
+
+  useEffect(() => {
+    api.getProjects().then((data) => {
+      setProjects(data);
+      setLoading(false);
+      if (data[0]) {
+        setExpanded(data[0].id);
+        loadStages(data[0].id);
+      }
+    });
+  }, [loadStages]);
+
+  const toggleExpand = (project) => {
+    const next = expanded === project.id ? null : project.id;
+    setExpanded(next);
+    if (next && !stagesByProject[project.id]) loadStages(project.id);
+  };
+
+  const submitVariation = async () => {
+    if (!form.description) return;
+    setSaving(true);
+    await api.addVariation(showAdd, { description: form.description, value: form.value, status: form.status });
+    await loadStages(showAdd);
+    setForm({ description: "", value: "", status: "pending" });
+    setSaving(false);
+    setShowAdd(null);
+  };
+
+  if (loading) return <LoadingBlock />;
+
+  const showAddProject = projects.find((p) => p.id === showAdd);
+
+  return (
+    <div style={{ padding: 32 }}>
+      {projects.map((p) => {
+        const variations = stagesByProject[p.id] || [];
+        return (
+          <div key={p.id} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
+            <div
+              onClick={() => toggleExpand(p)}
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 18, cursor: "pointer" }}
+            >
+              <div>
+                <div style={{ color: C.amber, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>{p.projectCode}</div>
+                <div style={{ color: C.white, fontSize: 15, fontWeight: 700 }}>{p.projectName}</div>
+              </div>
+              <ChevronDown size={18} color={C.grey} style={{ transform: expanded === p.id ? "rotate(180deg)" : "none" }} />
+            </div>
+            {expanded === p.id && (
+              <div style={{ padding: "0 18px 18px" }}>
+                <div style={{ color: C.grey, fontSize: 11, letterSpacing: 1, marginBottom: 10 }}>VARIATIONS</div>
+                {variations.length === 0 && <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 12 }}>No variations yet.</div>}
+                {variations.map((v) => (
+                  <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCardAlt, borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
+                    <div>
+                      <div style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>{v.stageCode} — {v.stageName}</div>
+                      <div style={{ color: C.grey, fontSize: 11.5 }}>${(v.variationValue || 0).toLocaleString()}</div>
+                    </div>
+                    <StatusBadge status={v.approvalStatus} />
+                  </div>
+                ))}
+                <button
+                  onClick={() => setShowAdd(p.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, color: C.amber, background: "none", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 0 0" }}
+                >
+                  <Plus size={15} /> Add Variation
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {showAdd && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAdd(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 420, padding: 26 }}>
+            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>New Variation — {showAddProject?.projectCode}</div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Description</div>
+              <input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="e.g. Additional skylight"
+                style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Contract Value ($)</div>
+              <input
+                value={form.value}
+                onChange={(e) => setForm({ ...form, value: e.target.value })}
+                placeholder="0.00"
+                style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Status</div>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                style={{ width: "100%", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              >
+                <option value="pending">Pending</option>
+                <option value="approved">Approved (visible to staff immediately)</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={submitVariation} disabled={saving} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: saving ? 0.6 : 1 }}>
+                {saving ? "Saving…" : "Save Variation"}
+              </button>
+              <button onClick={() => setShowAdd(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QRGenerator() {
+  const [projects, setProjects] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newProjectId, setNewProjectId] = useState("");
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    Promise.all([api.getProjects(), api.getSites()]).then(([projectData, siteData]) => {
+      setProjects(projectData);
+      setSites(siteData);
+      if (projectData[0]) setNewProjectId(projectData[0].id);
+      setLoading(false);
+    });
+  }, []);
+
+  const projectCode = (projectId) => projects.find((p) => p.id === projectId)?.projectCode || "—";
+
+  const createSite = async () => {
+    if (!newName || !newProjectId) return;
+    setCreating(true);
+    const site = await api.createSite({ projectId: newProjectId, projectCode: projectCode(newProjectId), siteName: newName });
+    setSites((prev) => [...prev, site]);
+    setNewName("");
+    setCreating(false);
+    setShowNew(false);
+  };
+
+  if (loading) return <LoadingBlock />;
+
+  return (
+    <div style={{ padding: 32 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div style={{ color: C.grey, fontSize: 13 }}>Generate a QR code per site. Print and post at the entrance.</div>
+        <button onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+          <Plus size={15} /> New Site Code
+        </button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {sites.length === 0 && (
+          <div style={{ color: C.greyDim, fontSize: 13, gridColumn: "1 / -1" }}>No site QR codes yet — generate one to get started.</div>
+        )}
+        {sites.map((s) => (
+          <div key={s.id} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, display: "flex", gap: 16 }}>
+            <div style={{ width: 96, height: 96, background: C.white, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <QrCode size={64} color="#141414" strokeWidth={1.2} />
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <div style={{ color: C.amber, fontSize: 10.5, fontWeight: 700, letterSpacing: 1 }}>{projectCode(s.projectId)}</div>
+              <div style={{ color: C.white, fontSize: 14.5, fontWeight: 700, marginTop: 2 }}>{s.siteName}</div>
+              <div style={{ color: C.greyDim, fontSize: 11, marginTop: 4, fontFamily: "monospace" }}>{s.qrCode}</div>
+              <div style={{ flex: 1 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button style={{ display: "flex", alignItems: "center", gap: 5, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 6, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>
+                  <Printer size={12} /> Print
+                </button>
+                <button style={{ display: "flex", alignItems: "center", gap: 5, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 6, padding: "6px 10px", fontSize: 11.5, cursor: "pointer" }}>
+                  <Download size={12} /> PNG
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showNew && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowNew(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 420, padding: 26 }}>
+            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>New Site QR Code</div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Project</div>
+              <select value={newProjectId} onChange={(e) => setNewProjectId(e.target.value)} style={{ width: "100%", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.projectCode} — {p.projectName}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Site / Location Label</div>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Front Gate, Site Office" style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }} />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={createSite} disabled={creating} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: creating ? 0.6 : 1 }}>
+                {creating ? "Generating…" : "Generate Code"}
+              </button>
+              <button onClick={() => setShowNew(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Team() {
+  const [staff, setStaff] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([api.getStaff(), api.getProjects()]).then(([staffData, projectData]) => {
+      setStaff(staffData);
+      setProjects(projectData);
+      setLoading(false);
+    });
+  }, []);
+
+  const assignedLabel = (person) => {
+    if (person.role === "manager") return "All Projects";
+    const codes = (person.projects || []).map((id) => projects.find((p) => p.id === id)?.projectCode).filter(Boolean);
+    return codes.length ? codes.join(", ") : "Unassigned";
+  };
+
+  if (loading) return <LoadingBlock />;
+
+  return (
+    <div style={{ padding: 32 }}>
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, color: C.greyDim, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+          <div>Name</div><div>Role</div><div>Assigned To</div>
+        </div>
+        {staff.length === 0 && (
+          <div style={{ padding: 18, color: C.greyDim, fontSize: 13 }}>No staff added yet — use the admin panel to add your team.</div>
+        )}
+        {staff.map((s, i) => (
+          <div key={s.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr", padding: "14px 18px", alignItems: "center", borderBottom: i < staff.length - 1 ? `1px solid ${C.border}` : "none" }}>
+            <div style={{ color: C.white, fontSize: 13.5, fontWeight: 600 }}>{s.displayName || s.email}</div>
+            <div style={{ color: s.role === "manager" ? C.amber : C.grey, fontSize: 13, textTransform: "capitalize" }}>{s.role}</div>
+            <div style={{ color: C.grey, fontSize: 13 }}>{assignedLabel(s)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DashboardShell() {
+  const [view, setView] = useState("overview");
+  const titles = { overview: "Overview", approvals: "Weekly Approvals", projects: "Projects & Variations", qr: "Site QR Codes", team: "Team" };
+
+  return (
+    <div style={{ display: "flex", height: "100vh", background: C.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
+      <Sidebar view={view} setView={setView} />
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        <Topbar title={titles[view]} />
+        {view === "overview" && <Overview />}
+        {view === "approvals" && <Approvals />}
+        {view === "projects" && <ProjectsAndVariations />}
+        {view === "qr" && <QRGenerator />}
+        {view === "team" && <Team />}
+      </div>
+    </div>
+  );
+}
+
+/** Root export — gates the dashboard behind manager login */
+export default function Dashboard() {
+  const { profile, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ height: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.grey }}>
+        <Loader2 size={22} style={{ animation: "spin 1s linear infinite" }} />
+        <style>{"@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }"}</style>
+      </div>
+    );
+  }
+
+  if (!profile) return <LoginScreen />;
+
+  return <DashboardShell />;
+}
