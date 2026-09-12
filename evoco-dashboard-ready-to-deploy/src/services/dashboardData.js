@@ -4,7 +4,6 @@
 
 import {
   collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -55,16 +54,18 @@ export async function getSites() {
 }
 
 /** Create a new site + QR token. Actual QR image generation happens client-side from the token. */
-export async function createSite({ projectId, projectCode, siteName }) {
+export async function createSite({ projectId, projectCode, siteName, gpsLatitude, gpsLongitude }) {
   const token = "EVO-" + projectCode + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
   const docRef = await addDoc(collection(db, "sites"), {
     projectId,
     siteName,
     qrCode: token,
     geofenceRadius: 50,
+    gpsLatitude,
+    gpsLongitude,
     createdAt: serverTimestamp(),
   });
-  return { id: docRef.id, projectId, siteName, qrCode: token };
+  return { id: docRef.id, projectId, siteName, qrCode: token, gpsLatitude, gpsLongitude };
 }
 
 // ---------- Attendance (manual check-in / check-out) ----------
@@ -142,15 +143,13 @@ export async function getEntriesForUserWeek(userId, weekStartISO, weekEndISO) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-/** Which userIds already have an approved week for this weekEndDate. */
+/** Map of userId -> approvalStatus ("approved" | "queried") for this weekEndDate. */
 export async function getWeekApprovals(weekEndISO) {
-  const q = query(
-    collection(db, "weeklyApprovals"),
-    where("weekEndDate", "==", weekEndISO),
-    where("approvalStatus", "==", "approved")
-  );
+  const q = query(collection(db, "weeklyApprovals"), where("weekEndDate", "==", weekEndISO));
   const snap = await getDocs(q);
-  return new Set(snap.docs.map((d) => d.data().userId));
+  const statusByUser = new Map();
+  snap.docs.forEach((d) => statusByUser.set(d.data().userId, d.data().approvalStatus));
+  return statusByUser;
 }
 
 /** Approve or query a worker's whole week — one weeklyApprovals doc per user per week (upsert, no duplicates). */
@@ -190,11 +189,11 @@ export async function respondToBackdateRequest(requestId, { status, respondedBy 
 
 // ---------- Overview stats ----------
 
-export async function getOverviewStats() {
-  const [projects, weekEntries, pendingApprovals, backdateRequests] = await Promise.all([
+/** Active projects, this week's approval state, and open backdate requests, for the overview cards. */
+export async function getOverviewStats(weekEndISO) {
+  const [projects, approvalByUser, backdateRequests] = await Promise.all([
     getProjects(),
-    getDocs(collectionGroup(db, "timesheetEntries")).catch(() => ({ docs: [] })),
-    getDocs(query(collection(db, "weeklyApprovals"), where("approvalStatus", "==", "pending"))).catch(() => ({ docs: [] })),
+    getWeekApprovals(weekEndISO),
     getPendingBackdateRequests(),
   ]);
 
@@ -202,7 +201,7 @@ export async function getOverviewStats() {
 
   return {
     activeProjectCount: activeProjects.length,
-    pendingApprovalCount: pendingApprovals.docs?.length ?? 0,
+    approvalByUser,
     openBackdateRequestCount: backdateRequests.length,
   };
 }

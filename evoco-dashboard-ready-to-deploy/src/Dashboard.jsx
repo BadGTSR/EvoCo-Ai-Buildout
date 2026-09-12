@@ -138,6 +138,7 @@ function StatusBadge({ status }) {
 function Overview() {
   const [stats, setStats] = useState(null);
   const [weekHours, setWeekHours] = useState(null);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(null);
   const [backdateRequests, setBackdateRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -145,15 +146,17 @@ function Overview() {
     let active = true;
     const { start, end } = getCurrentWeekBounds();
 
-    Promise.all([api.getOverviewStats(), api.getWeekTimesheets(start, end), api.getPendingBackdateRequests()])
+    Promise.all([api.getOverviewStats(end), api.getWeekTimesheets(start, end), api.getPendingBackdateRequests()])
       .then(([overview, byUser, requests]) => {
         if (!active) return;
+        const workedUserIds = Object.keys(byUser);
         const totalMinutes = Object.values(byUser)
           .flat()
           .filter((e) => e.entryType === "work")
           .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
         setStats(overview);
         setWeekHours((totalMinutes / 60).toFixed(0));
+        setPendingApprovalCount(workedUserIds.filter((id) => overview.approvalByUser.get(id) !== "approved").length);
         setBackdateRequests(requests);
         setLoading(false);
       })
@@ -169,7 +172,7 @@ function Overview() {
       <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
         <StatCard label="Active Projects" value={stats?.activeProjectCount ?? "—"} />
         <StatCard label="Hours This Week" value={weekHours ?? "—"} sub="Across all staff" />
-        <StatCard label="Pending Approvals" value={stats?.pendingApprovalCount ?? "—"} color={C.warn} />
+        <StatCard label="Pending Approvals" value={pendingApprovalCount ?? "—"} color={C.warn} />
         <StatCard label="Open Backdate Requests" value={stats?.openBackdateRequestCount ?? "—"} color={C.warn} />
       </div>
 
@@ -203,9 +206,12 @@ function Approvals() {
   const [busyId, setBusyId] = useState(null);
   const week = getCurrentWeekBounds();
 
+  const [queryNote, setQueryNote] = useState("");
+  const [queryMode, setQueryMode] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
-    const [byUser, staff, projects, approvedUserIds] = await Promise.all([
+    const [byUser, staff, projects, approvalByUser] = await Promise.all([
       api.getWeekTimesheets(week.start, week.end),
       api.getStaff(),
       api.getProjects(),
@@ -225,7 +231,7 @@ function Approvals() {
         name: person.displayName || person.email || userId,
         projectCode: projMap[projectId]?.projectCode || "—",
         hours: totalHours,
-        status: approvedUserIds.has(userId) ? "approved" : "pending",
+        status: approvalByUser.get(userId) || "pending",
         entries,
       };
     });
@@ -249,9 +255,29 @@ function Approvals() {
     setBusyId(null);
   };
 
+  const sendQuery = async (row) => {
+    setBusyId(row.userId);
+    await api.setWeekApprovalStatus({
+      managerId: profile?.uid,
+      userId: row.userId,
+      weekEndDate: week.end,
+      status: "queried",
+      timesheetEntryIds: row.entries.map((e) => e.id),
+      totalHours: row.hours,
+      notes: queryNote,
+    });
+    setRows((prev) => prev.map((r) => (r.userId === row.userId ? { ...r, status: "queried" } : r)));
+    setBusyId(null);
+    setQueryMode(false);
+    setQueryNote("");
+    setSelected(null);
+  };
+
   const openDetail = (row) => {
     setSelected(row);
     setSelectedEntries(row.entries.slice().sort((a, b) => new Date(a.startTime) - new Date(b.startTime)));
+    setQueryMode(false);
+    setQueryNote("");
   };
 
   if (loading) return <LoadingBlock />;
@@ -285,7 +311,7 @@ function Approvals() {
             <div><StatusBadge status={t.status} /></div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => openDetail(t)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>View</button>
-              {t.status === "pending" && (
+              {t.status !== "approved" && (
                 <button onClick={() => approve(t)} disabled={busyId === t.userId} style={{ background: "rgba(76,175,125,0.12)", border: `1px solid ${C.good}`, color: C.good, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600, opacity: busyId === t.userId ? 0.6 : 1 }}>
                   {busyId === t.userId ? "…" : "Approve"}
                 </button>
@@ -313,10 +339,32 @@ function Approvals() {
                 </div>
               ))
             )}
-            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button onClick={() => { approve(selected); setSelected(null); }} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer" }}>Approve Week</button>
-              <button onClick={() => setSelected(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Query</button>
-            </div>
+            {queryMode ? (
+              <>
+                <textarea
+                  value={queryNote}
+                  onChange={(e) => setQueryNote(e.target.value)}
+                  placeholder="What needs fixing before this can be approved?"
+                  rows={3}
+                  style={{ width: "100%", boxSizing: "border-box", marginTop: 16, background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13, fontFamily: "inherit", resize: "none" }}
+                />
+                <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                  <button
+                    onClick={() => sendQuery(selected)}
+                    disabled={!queryNote.trim() || busyId === selected.userId}
+                    style={{ flex: 1, background: "#e0736d", color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: !queryNote.trim() || busyId === selected.userId ? 0.6 : 1 }}
+                  >
+                    {busyId === selected.userId ? "Sending…" : "Send Query"}
+                  </button>
+                  <button onClick={() => { setQueryMode(false); setQueryNote(""); }} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Back</button>
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                <button onClick={() => { approve(selected); setSelected(null); }} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer" }}>Approve Week</button>
+                <button onClick={() => setQueryMode(true)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Query</button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -464,6 +512,9 @@ function QRGenerator() {
   const [newProjectId, setNewProjectId] = useState("");
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [newLocation, setNewLocation] = useState(null); // { lat, lng }
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState("");
 
   useEffect(() => {
     Promise.all([api.getProjects(), api.getSites()]).then(([projectData, siteData]) => {
@@ -476,12 +527,45 @@ function QRGenerator() {
 
   const projectCode = (projectId) => projects.find((p) => p.id === projectId)?.projectCode || "—";
 
+  const openNew = () => {
+    setNewLocation(null);
+    setLocError("");
+    setShowNew(true);
+  };
+
+  const captureLocation = () => {
+    if (!navigator.geolocation) {
+      setLocError("Location isn't available in this browser.");
+      return;
+    }
+    setLocating(true);
+    setLocError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setNewLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocating(false);
+      },
+      () => {
+        setLocError("Couldn't get your location — check location permission and try again.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  };
+
   const createSite = async () => {
-    if (!newName || !newProjectId) return;
+    if (!newName || !newProjectId || !newLocation) return;
     setCreating(true);
-    const site = await api.createSite({ projectId: newProjectId, projectCode: projectCode(newProjectId), siteName: newName });
+    const site = await api.createSite({
+      projectId: newProjectId,
+      projectCode: projectCode(newProjectId),
+      siteName: newName,
+      gpsLatitude: newLocation.lat,
+      gpsLongitude: newLocation.lng,
+    });
     setSites((prev) => [...prev, site]);
     setNewName("");
+    setNewLocation(null);
     setCreating(false);
     setShowNew(false);
   };
@@ -492,7 +576,7 @@ function QRGenerator() {
     <div style={{ padding: 32 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div style={{ color: C.grey, fontSize: 13 }}>Generate a QR code per site. Print and post at the entrance.</div>
-        <button onClick={() => setShowNew(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+        <button onClick={openNew} style={{ display: "flex", alignItems: "center", gap: 8, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
           <Plus size={15} /> New Site Code
         </button>
       </div>
@@ -538,8 +622,20 @@ function QRGenerator() {
               <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Site / Location Label</div>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Front Gate, Site Office" style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }} />
             </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Site Location (for auto-checkout)</div>
+              <div style={{ color: C.greyDim, fontSize: 11.5, marginBottom: 8 }}>Stand at the site before generating — this sets the geofence centre workers auto-checkout from.</div>
+              <button
+                onClick={captureLocation}
+                disabled={locating}
+                style={{ width: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: newLocation ? "rgba(76,175,125,0.12)" : C.bgCard, border: `1px solid ${newLocation ? C.good : C.border}`, color: newLocation ? C.good : C.white, borderRadius: 8, padding: "10px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: locating ? 0.6 : 1 }}
+              >
+                {locating ? "Locating…" : newLocation ? `Location captured (${newLocation.lat.toFixed(5)}, ${newLocation.lng.toFixed(5)})` : "Use My Current Location"}
+              </button>
+              {locError && <div style={{ color: "#e0736d", fontSize: 11.5, marginTop: 6 }}>{locError}</div>}
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={createSite} disabled={creating} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: creating ? 0.6 : 1 }}>
+              <button onClick={createSite} disabled={creating || !newName || !newProjectId || !newLocation} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: creating || !newName || !newProjectId || !newLocation ? 0.6 : 1 }}>
                 {creating ? "Generating…" : "Generate Code"}
               </button>
               <button onClick={() => setShowNew(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
