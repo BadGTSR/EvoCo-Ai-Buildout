@@ -4,7 +4,6 @@
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { checkIn, startGeofenceWatch } from '../services/attendanceService';
 import { useAuth } from '../context/AuthContext';
 import { colors, spacing } from '../theme';
 
@@ -17,7 +16,7 @@ const QUESTIONS = [
 
 export default function HsQuestionnaireScreen({ route, navigation }) {
   const { site } = route.params;
-  const { user, setActiveSite } = useAuth();
+  const { beginCheckIn } = useAuth();
   const [answers, setAnswers] = useState({});
 
   const allAnswered = QUESTIONS.every((q) => answers[q.key] !== undefined);
@@ -28,12 +27,9 @@ export default function HsQuestionnaireScreen({ route, navigation }) {
   }
 
   function handleSubmit() {
-    setActiveSite(site);
-    checkIn({ userId: user.uid, site, hsAnswers: answers });
-    startGeofenceWatch(site, () => {
-      // Auto-checkout fires from here when the worker leaves the geofence.
-      // Handled globally — see App.js for the active-site watcher setup.
-    });
+    // Login hasn't happened yet, so there's no userId to write the check-in
+    // against — AuthContext holds onto this and submits it once login completes.
+    beginCheckIn(site, answers);
     navigation.replace('CheckInConfirmed', { site });
   }
 
