@@ -47,6 +47,12 @@ export default function QrScanScreen({ navigation }) {
         <TouchableOpacity style={styles.button} onPress={requestPermission}>
           <Text style={styles.buttonText}>Grant Camera Access</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.manualLink}
+          onPress={() => navigation.navigate('ManualSiteSelect')}
+        >
+          <Text style={styles.manualLinkText}>Can't scan? Choose your site instead</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -68,6 +74,12 @@ export default function QrScanScreen({ navigation }) {
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Text style={styles.hint}>Point your camera at the QR code posted at the site entrance</Text>
+      <TouchableOpacity
+        style={styles.manualLink}
+        onPress={() => navigation.navigate('ManualSiteSelect')}
+      >
+        <Text style={styles.manualLinkText}>Can't scan? Choose your site instead</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -96,6 +108,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   hint: { color: colors.textMuted, marginTop: spacing.lg, textAlign: 'center' },
+  manualLink: { marginTop: spacing.lg, padding: spacing.sm },
+  manualLinkText: { color: colors.accent, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
   message: { color: '#fff', textAlign: 'center', marginBottom: spacing.lg },
   error: { color: colors.error, marginTop: spacing.md, textAlign: 'center' },
   button: {

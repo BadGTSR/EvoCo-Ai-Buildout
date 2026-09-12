@@ -66,6 +66,42 @@ export async function createSite({ projectId, projectCode, siteName }) {
   return { id: docRef.id, projectId, siteName, qrCode: token };
 }
 
+// ---------- Attendance (manual check-in / check-out) ----------
+
+function todayISO() {
+  return new Date().toISOString().split("T")[0];
+}
+
+/** Every attendance record for today, across all workers. */
+export async function getTodayAttendance() {
+  const q = query(collection(db, "attendance"), where("date", "==", todayISO()));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/** Manually check a worker in from the dashboard — QR-scan fallback for office use. */
+export async function adminCheckIn({ userId, siteId, projectId, managerId }) {
+  return addDoc(collection(db, "attendance"), {
+    userId,
+    siteId,
+    projectId,
+    checkInTime: new Date().toISOString(),
+    checkOutTime: null,
+    hsQuestionnaireAnswers: null,
+    manuallyCheckedInBy: managerId,
+    date: todayISO(),
+    createdAt: serverTimestamp(),
+  });
+}
+
+/** Manually check a worker out from the dashboard. */
+export async function adminCheckOut(attendanceId, managerId) {
+  return updateDoc(doc(db, "attendance", attendanceId), {
+    checkOutTime: new Date().toISOString(),
+    manuallyCheckedOutBy: managerId,
+  });
+}
+
 // ---------- Team ----------
 
 export async function getStaff() {

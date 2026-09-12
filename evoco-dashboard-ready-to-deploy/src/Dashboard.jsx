@@ -49,6 +49,7 @@ function Sidebar({ view, setView }) {
     { id: "approvals", label: "Weekly Approvals", icon: FileCheck },
     { id: "projects", label: "Projects & Variations", icon: FolderKanban },
     { id: "qr", label: "Site QR Codes", icon: QrCode },
+    { id: "attendance", label: "Attendance", icon: Clock },
     { id: "team", label: "Team", icon: Users },
   ];
   return (
@@ -550,6 +551,135 @@ function QRGenerator() {
   );
 }
 
+function Attendance() {
+  const { profile } = useAuth();
+  const [staff, setStaff] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyUserId, setBusyUserId] = useState(null);
+  const [selectedSite, setSelectedSite] = useState({});
+
+  const load = useCallback(async () => {
+    const [staffData, siteData, attendanceData] = await Promise.all([
+      api.getStaff(),
+      api.getSites(),
+      api.getTodayAttendance(),
+    ]);
+    setStaff(staffData.filter((s) => s.role !== "manager"));
+    setSites(siteData);
+    setRecords(attendanceData);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const siteName = (siteId) => sites.find((s) => s.id === siteId)?.siteName || "Unknown site";
+
+  const recordFor = (userId) => {
+    const userRecords = records.filter((r) => r.userId === userId);
+    const active = userRecords.find((r) => !r.checkOutTime);
+    if (active) return { record: active, status: "in" };
+    const last = userRecords.sort((a, b) => (a.checkInTime < b.checkInTime ? 1 : -1))[0];
+    if (last) return { record: last, status: "out" };
+    return { record: null, status: "none" };
+  };
+
+  const handleCheckIn = async (userId) => {
+    const siteId = selectedSite[userId];
+    if (!siteId) return;
+    setBusyUserId(userId);
+    const site = sites.find((s) => s.id === siteId);
+    await api.adminCheckIn({ userId, siteId, projectId: site?.projectId, managerId: profile.uid });
+    await load();
+    setBusyUserId(null);
+  };
+
+  const handleCheckOut = async (attendanceId, userId) => {
+    setBusyUserId(userId);
+    await api.adminCheckOut(attendanceId, profile.uid);
+    await load();
+    setBusyUserId(null);
+  };
+
+  if (loading) return <LoadingBlock />;
+
+  return (
+    <div style={{ padding: 32 }}>
+      <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 16 }}>
+        Use this to check someone in or out manually — for a broken QR code, a lost phone, or checking on someone's behalf.
+      </div>
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.4fr 1.4fr 1fr", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, color: C.greyDim, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+          <div>Name</div><div>Status</div><div>Site</div><div>Action</div>
+        </div>
+        {staff.length === 0 && (
+          <div style={{ padding: 18, color: C.greyDim, fontSize: 13 }}>No workers on the team yet.</div>
+        )}
+        {staff.map((s, i) => {
+          const { record, status } = recordFor(s.id);
+          const isBusy = busyUserId === s.id;
+          return (
+            <div key={s.id} style={{ display: "grid", gridTemplateColumns: "1.6fr 1.4fr 1.4fr 1fr", padding: "14px 18px", alignItems: "center", borderBottom: i < staff.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <div style={{ color: C.white, fontSize: 13.5, fontWeight: 600 }}>{s.displayName || s.email}</div>
+              <div>
+                {status === "in" && (
+                  <span style={{ color: C.good, background: "rgba(76,175,125,0.12)", padding: "4px 10px", borderRadius: 6, fontSize: 11.5, fontWeight: 700 }}>
+                    Checked in {new Date(record.checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+                {status === "out" && (
+                  <span style={{ color: C.grey, background: C.bgCardAlt, padding: "4px 10px", borderRadius: 6, fontSize: 11.5, fontWeight: 700 }}>
+                    Checked out {new Date(record.checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+                {status === "none" && <span style={{ color: C.greyDim, fontSize: 12.5 }}>Not checked in today</span>}
+              </div>
+              <div>
+                {status === "in" ? (
+                  <span style={{ color: C.grey, fontSize: 13 }}>{siteName(record.siteId)}</span>
+                ) : (
+                  <select
+                    value={selectedSite[s.id] || ""}
+                    onChange={(e) => setSelectedSite({ ...selectedSite, [s.id]: e.target.value })}
+                    style={{ background: C.bgCardAlt, border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 12.5, padding: "6px 8px", width: "100%" }}
+                  >
+                    <option value="">Select site…</option>
+                    {sites.map((site) => (
+                      <option key={site.id} value={site.id}>{site.siteName}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                {status === "in" ? (
+                  <button
+                    onClick={() => handleCheckOut(record.id, s.id)}
+                    disabled={isBusy}
+                    style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.white, fontSize: 12.5, fontWeight: 600, padding: "7px 12px", cursor: "pointer", width: "100%" }}
+                  >
+                    {isBusy ? "…" : "Check Out"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleCheckIn(s.id)}
+                    disabled={isBusy || !selectedSite[s.id]}
+                    style={{ background: selectedSite[s.id] ? C.amber : C.bgCardAlt, border: "none", borderRadius: 6, color: selectedSite[s.id] ? "#1a1400" : C.greyDim, fontSize: 12.5, fontWeight: 700, padding: "7px 12px", cursor: selectedSite[s.id] ? "pointer" : "not-allowed", width: "100%" }}
+                  >
+                    {isBusy ? "…" : "Check In"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Team() {
   const [staff, setStaff] = useState([]);
   const [projects, setProjects] = useState([]);
@@ -594,7 +724,7 @@ function Team() {
 
 function DashboardShell() {
   const [view, setView] = useState("overview");
-  const titles = { overview: "Overview", approvals: "Weekly Approvals", projects: "Projects & Variations", qr: "Site QR Codes", team: "Team" };
+  const titles = { overview: "Overview", approvals: "Weekly Approvals", projects: "Projects & Variations", qr: "Site QR Codes", attendance: "Attendance", team: "Team" };
 
   return (
     <div style={{ display: "flex", height: "100vh", background: C.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
@@ -605,6 +735,7 @@ function DashboardShell() {
         {view === "approvals" && <Approvals />}
         {view === "projects" && <ProjectsAndVariations />}
         {view === "qr" && <QRGenerator />}
+        {view === "attendance" && <Attendance />}
         {view === "team" && <Team />}
       </div>
     </div>

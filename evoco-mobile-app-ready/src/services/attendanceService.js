@@ -33,6 +33,15 @@ export async function resolveSiteFromQr(qrValue) {
 }
 
 /**
+ * All sites, for the manual check-in fallback when a worker can't scan
+ * the QR code (camera broken, code damaged, no permission, etc).
+ */
+export async function getAllSites() {
+  const snapshot = await getDocs(collection(db, 'sites'));
+  return snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
  * Record check-in after QR scan + H&S questionnaire complete.
  * Queues offline-safe — works with no signal on site.
  */

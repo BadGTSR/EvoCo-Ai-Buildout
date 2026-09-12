@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
 
 import QrScanScreen from '../screens/QrScanScreen';
+import ManualSiteSelectScreen from '../screens/ManualSiteSelectScreen';
 import HsQuestionnaireScreen from '../screens/HsQuestionnaireScreen';
 import CheckInConfirmedScreen from '../screens/CheckInConfirmedScreen';
 import LoginScreen from '../screens/LoginScreen';
@@ -50,6 +51,7 @@ export default function AppNavigator() {
           // Pre-auth flow: on-site check-in doesn't require an app login
           <>
             <Stack.Screen name="QrScan" component={QrScanScreen} options={{ title: 'Scan Site QR' }} />
+            <Stack.Screen name="ManualSiteSelect" component={ManualSiteSelectScreen} options={{ title: 'Select Site' }} />
             <Stack.Screen name="HsQuestionnaire" component={HsQuestionnaireScreen} options={{ title: 'Site Check-In' }} />
             <Stack.Screen name="CheckInConfirmed" component={CheckInConfirmedScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AppLogin" component={LoginScreen} options={{ headerShown: false }} />
