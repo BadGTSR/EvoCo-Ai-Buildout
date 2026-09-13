@@ -4,6 +4,7 @@ import { colors, spacing } from '../theme';
 import { getEntriesForDate } from '../services/timesheetService';
 import { getPendingCount } from '../services/offlineSync';
 import { useAuth } from '../context/AuthContext';
+import { localDateString } from '../utils/dateUtils';
 
 function minutesToHours(mins) {
   return (mins / 60).toFixed(1);
@@ -16,7 +17,7 @@ export default function DashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateString();
 
   const loadEntries = useCallback(async () => {
     if (!user) return;

@@ -16,22 +16,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
 import { logTimeEntry, uploadTimesheetPhoto } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
+import { formatEntryDate, combineDateAndTime } from '../utils/dateUtils';
 
 function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatEntryDate(date) {
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
-}
-
-/** Applies entryDate's year/month/day onto time's hour/minute. */
-function combineDateAndTime(entryDate, time) {
-  const combined = new Date(entryDate);
-  combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
-  return combined;
 }
 
 export default function TimeLogScreen({ navigation, route }) {

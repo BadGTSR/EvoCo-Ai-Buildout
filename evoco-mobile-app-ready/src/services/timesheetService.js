@@ -11,6 +11,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
 import { queueWrite, getPendingWrites } from './offlineSync';
+import { localDateString } from '../utils/dateUtils';
 
 /** Firestore Timestamp or plain ISO string (from a not-yet-synced local write) -> comparable millis. */
 function toMillis(createdAt) {
@@ -39,8 +40,8 @@ export function logTimeEntry({
   notes,
   photoUrls = [],
 }) {
-  const today = new Date().toISOString().split('T')[0];
-  const entryDate = new Date(startTime).toISOString().split('T')[0];
+  const today = localDateString();
+  const entryDate = localDateString(new Date(startTime));
   const isBackdated = entryDate !== today;
   const durationMinutes = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
 

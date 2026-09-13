@@ -5,11 +5,12 @@ import * as Location from 'expo-location';
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { queueWrite } from './offlineSync';
+import { localDateString } from '../utils/dateUtils';
 
 const EARTH_RADIUS_METRES = 6371000;
 
 /** Haversine distance between two GPS points, in metres */
-function distanceMetres(lat1, lon1, lat2, lon2) {
+export function distanceMetres(lat1, lon1, lat2, lon2) {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -46,7 +47,7 @@ export async function getAllSites() {
  * Queues offline-safe — works with no signal on site.
  */
 export function checkIn({ userId, site, hsAnswers }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateString();
 
   queueWrite('attendance', {
     userId,
@@ -93,7 +94,7 @@ export function startGeofenceWatch(site, onAutoCheckout) {
 
 /** Find today's active (not yet checked out) attendance record for a user */
 export async function getActiveAttendance(userId) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateString();
   const q = query(
     collection(db, 'attendance'),
     where('userId', '==', userId),

@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing } from '../theme';
 import { getEntriesForDate } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
+import { localDateString } from '../utils/dateUtils';
 
 const ENTRY_TYPE_LABELS = {
   work: 'Work',
@@ -21,7 +22,7 @@ export default function DailySummaryScreen({ navigation, route }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localDateString();
 
   const load = useCallback(async () => {
     if (!user) return;
