@@ -3,6 +3,7 @@ import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, Searc
 import { useAuth } from "./context/AuthContext";
 import * as api from "./services/dashboardData";
 import LoginScreen from "./LoginScreen";
+import { getCurrentWeekBounds } from "./utils/dateUtils";
 
 const C = {
   bg: "#141414",
@@ -18,19 +19,6 @@ const C = {
   good: "#4caf7d",
   warn: "#e0a33f",
 };
-
-/** Monday–Sunday ISO bounds for "this week", used by Overview and Approvals */
-function getCurrentWeekBounds() {
-  const now = new Date();
-  const day = now.getDay(); // 0 = Sunday
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + diffToMonday);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const iso = (d) => d.toISOString().split("T")[0];
-  return { start: iso(monday), end: iso(sunday), label: `${monday.toLocaleDateString("en-NZ", { day: "numeric", month: "short" })}–${sunday.toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}` };
-}
 
 function LoadingBlock() {
   return (
