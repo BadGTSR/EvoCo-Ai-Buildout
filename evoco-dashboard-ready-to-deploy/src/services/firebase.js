@@ -9,7 +9,7 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyCWgZBY8qoHvqjVwiK5poNcX9GTlnTFc-U",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCWgZBY8qoHvqjVwiK5poNcX9GTlnTFc-U",
   authDomain: "evoco-timesheets.firebaseapp.com",
   projectId: "evoco-timesheets",
   storageBucket: "evoco-timesheets.firebasestorage.app",
