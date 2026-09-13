@@ -9,7 +9,9 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
 import { logTimeEntry, uploadTimesheetPhoto } from '../services/timesheetService';
@@ -19,15 +21,32 @@ function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatEntryDate(date) {
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  return date.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** Applies entryDate's year/month/day onto time's hour/minute. */
+function combineDateAndTime(entryDate, time) {
+  const combined = new Date(entryDate);
+  combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
+  return combined;
+}
+
 export default function TimeLogScreen({ navigation, route }) {
   const { site, project, stage } = route.params;
   const { user } = useAuth();
 
+  const [entryDate, setEntryDate] = useState(new Date());
   const [startTime, setStartTime] = useState(new Date());
   const [endTime, setEndTime] = useState(null);
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState([]); // local URIs, uploaded on save
   const [saving, setSaving] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
 
   const addPhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -67,8 +86,8 @@ export default function TimeLogScreen({ navigation, route }) {
         projectId: project.id,
         stageId: stage.id,
         entryType: 'work',
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString(),
+        startTime: combineDateAndTime(entryDate, startTime).toISOString(),
+        endTime: combineDateAndTime(entryDate, endTime).toISOString(),
         notes,
         photoUrls,
       });
@@ -81,25 +100,89 @@ export default function TimeLogScreen({ navigation, route }) {
     }
   };
 
-  const bumpEndTimeNow = () => setEndTime(new Date());
+  const onChangeDate = (event, selected) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (event.type !== 'dismissed' && selected) setEntryDate(selected);
+  };
+
+  const onChangeStart = (event, selected) => {
+    setShowStartPicker(Platform.OS === 'ios');
+    if (event.type !== 'dismissed' && selected) setStartTime(selected);
+  };
+
+  const onChangeEnd = (event, selected) => {
+    setShowEndPicker(Platform.OS === 'ios');
+    if (event.type !== 'dismissed' && selected) setEndTime(selected);
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.header}>{project.projectCode} · {stage.stageName}</Text>
 
+      <Text style={styles.fieldLabel}>Date</Text>
+      <TouchableOpacity style={styles.dateRow} onPress={() => setShowDatePicker(true)}>
+        <Text style={styles.dateValue}>{formatEntryDate(entryDate)}</Text>
+      </TouchableOpacity>
+      {showDatePicker && (
+        <>
+          <DateTimePicker
+            value={entryDate}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            maximumDate={new Date()}
+            onChange={onChangeDate}
+          />
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity style={styles.pickerDoneButton} onPress={() => setShowDatePicker(false)}>
+              <Text style={styles.pickerDoneText}>Done</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+
       <View style={styles.timeRow}>
-        <View style={styles.timeBlock}>
+        <TouchableOpacity style={styles.timeBlock} onPress={() => setShowStartPicker(true)}>
           <Text style={styles.timeLabel}>Start</Text>
           <Text style={styles.timeValue}>{formatTime(startTime)}</Text>
-        </View>
+        </TouchableOpacity>
         <Text style={styles.timeSeparator}>→</Text>
-        <TouchableOpacity style={styles.timeBlock} onPress={bumpEndTimeNow}>
+        <TouchableOpacity style={styles.timeBlock} onPress={() => setShowEndPicker(true)}>
           <Text style={styles.timeLabel}>End</Text>
           <Text style={[styles.timeValue, !endTime && styles.timeValuePlaceholder]}>
             {endTime ? formatTime(endTime) : 'Tap to set'}
           </Text>
         </TouchableOpacity>
       </View>
+      {showStartPicker && (
+        <>
+          <DateTimePicker
+            value={startTime}
+            mode="time"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={onChangeStart}
+          />
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity style={styles.pickerDoneButton} onPress={() => setShowStartPicker(false)}>
+              <Text style={styles.pickerDoneText}>Done</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
+      {showEndPicker && (
+        <>
+          <DateTimePicker
+            value={endTime || new Date()}
+            mode="time"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={onChangeEnd}
+          />
+          {Platform.OS === 'ios' && (
+            <TouchableOpacity style={styles.pickerDoneButton} onPress={() => setShowEndPicker(false)}>
+              <Text style={styles.pickerDoneText}>Done</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
 
       <Text style={styles.fieldLabel}>Notes (optional)</Text>
       <TextInput
@@ -145,6 +228,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing.xl },
   header: { color: colors.accent, fontSize: 15, fontWeight: '700', marginBottom: spacing.lg },
+  dateRow: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  dateValue: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  pickerDoneButton: { alignSelf: 'flex-end', paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
+  pickerDoneText: { color: colors.accent, fontSize: 14, fontWeight: '700' },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
