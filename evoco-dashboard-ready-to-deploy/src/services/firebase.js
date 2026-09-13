@@ -19,7 +19,9 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Named "default" database (not the reserved "(default)" one) — see
+// evoco-timesheets project's Firestore database ID in the Firebase console.
+export const db = getFirestore(app, "default");
 export const storage = getStorage(app);
 
 export { signInWithEmailAndPassword, onAuthStateChanged, signOut };

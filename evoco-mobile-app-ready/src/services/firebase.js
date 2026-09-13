@@ -26,10 +26,12 @@ export const auth = initializeAuth(app, {
 });
 
 // Firestore with offline persistence — this is what lets workers log time
-// on-site with no signal, and it syncs automatically once they're back online
+// on-site with no signal, and it syncs automatically once they're back online.
+// Named "default" database (not the reserved "(default)" one) — see
+// evoco-timesheets project's Firestore database ID in the Firebase console.
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({}),
-});
+}, "default");
 
 // Cloud Storage for timesheet photos and receipts
 export const storage = getStorage(app);
