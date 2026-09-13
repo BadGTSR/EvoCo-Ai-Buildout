@@ -136,11 +136,13 @@ function StatusBadge({ status }) {
 }
 
 function Overview() {
+  const { profile } = useAuth();
   const [stats, setStats] = useState(null);
   const [weekHours, setWeekHours] = useState(null);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(null);
   const [backdateRequests, setBackdateRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -165,6 +167,14 @@ function Overview() {
     return () => { active = false; };
   }, []);
 
+  const respond = async (request, status) => {
+    setBusyId(request.id);
+    await api.respondToBackdateRequest(request.id, { status, respondedBy: profile?.uid });
+    setBackdateRequests((prev) => prev.filter((r) => r.id !== request.id));
+    setStats((prev) => prev && { ...prev, openBackdateRequestCount: Math.max(0, prev.openBackdateRequestCount - 1) });
+    setBusyId(null);
+  };
+
   if (loading) return <LoadingBlock />;
 
   return (
@@ -181,13 +191,34 @@ function Overview() {
         {backdateRequests.length === 0 ? (
           <div style={{ padding: "18px", color: C.greyDim, fontSize: 13 }}>No recent activity to show.</div>
         ) : (
-          backdateRequests.map((r, i) => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: i < backdateRequests.length - 1 ? `1px solid ${C.border}` : "none" }}>
-              <AlertCircle size={16} color={C.warn} />
-              <div style={{ flex: 1, color: C.white, fontSize: 13 }}>Backdate request for {r.requestedDate} · {(r.durationMinutes / 60).toFixed(1)}h</div>
-              <div style={{ color: C.greyDim, fontSize: 11.5 }}>Pending</div>
-            </div>
-          ))
+          backdateRequests.map((r, i) => {
+            const isBusy = busyId === r.id;
+            return (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: i < backdateRequests.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                <AlertCircle size={16} color={C.warn} />
+                <div style={{ flex: 1, color: C.white, fontSize: 13 }}>
+                  Backdate request for {r.requestedDate} · {(r.durationMinutes / 60).toFixed(1)}h
+                  {r.reason ? <span style={{ color: C.greyDim }}> — {r.reason}</span> : null}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => respond(r, "approved")}
+                    disabled={isBusy}
+                    style={{ background: "rgba(76,175,125,0.12)", border: `1px solid ${C.good}`, color: C.good, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600, opacity: isBusy ? 0.6 : 1 }}
+                  >
+                    {isBusy ? "…" : "Approve"}
+                  </button>
+                  <button
+                    onClick={() => respond(r, "rejected")}
+                    disabled={isBusy}
+                    style={{ background: "rgba(224,115,109,0.12)", border: "1px solid #e0736d", color: "#e0736d", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600, opacity: isBusy ? 0.6 : 1 }}
+                  >
+                    Deny
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
