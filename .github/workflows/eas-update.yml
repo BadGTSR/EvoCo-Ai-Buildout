@@ -1,0 +1,39 @@
+name: EAS Update (mobile app OTA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: EAS Update branch/channel to publish to
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - preview
+          - development
+      message:
+        description: Update message
+        required: false
+        default: Manual OTA update
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evoco-mobile-app-ready
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish EAS Update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli update --branch "${{ inputs.branch }}" --environment "${{ inputs.branch }}" --message "${{ inputs.message }}" --non-interactive
