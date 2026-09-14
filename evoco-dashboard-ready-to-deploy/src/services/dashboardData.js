@@ -171,6 +171,21 @@ export async function setWeekApprovalStatus({ managerId, userId, weekEndDate, st
   );
 }
 
+/** Whether a given week has been finalized (locks approvals, triggers the summary email). */
+export async function getWeekFinalization(weekEndISO) {
+  const snap = await getDoc(doc(db, "weekFinalizations", weekEndISO));
+  return snap.exists() ? snap.data() : null;
+}
+
+/** Lock the week and trigger the Cloud Function that emails the summary report. */
+export async function finalizeWeek(weekEndISO, managerId) {
+  return setDoc(doc(db, "weekFinalizations", weekEndISO), {
+    weekEndDate: weekEndISO,
+    finalizedBy: managerId,
+    finalizedAt: serverTimestamp(),
+  });
+}
+
 // ---------- Backdate Requests ----------
 
 export async function getPendingBackdateRequests() {

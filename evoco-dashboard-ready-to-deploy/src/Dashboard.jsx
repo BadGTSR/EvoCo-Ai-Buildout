@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2 } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, ChevronLeft, ChevronRight, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2, Lock, FileSpreadsheet } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import * as api from "./services/dashboardData";
 import LoginScreen from "./LoginScreen";
 import { getCurrentWeekBounds } from "./utils/dateUtils";
+import { aggregateHoursByStaffAndProject } from "./utils/timesheetAggregation";
+import { buildTimesheetWorkbook, downloadWorkbook } from "./utils/exportExcel";
 
 const C = {
   bg: "#141414",
@@ -215,45 +217,95 @@ function Overview() {
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+function ExportModal({ defaultStart, defaultEnd, onClose }) {
+  const [start, setStart] = useState(defaultStart);
+  const [end, setEnd] = useState(defaultEnd);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
+
+  const runExport = async () => {
+    if (!start || !end || start > end) {
+      setError("Pick a valid start and end date.");
+      return;
+    }
+    setError("");
+    setExporting(true);
+    try {
+      const [byUser, staff, projects] = await Promise.all([
+        api.getWeekTimesheets(start, end),
+        api.getStaff(),
+        api.getProjects(),
+      ]);
+      const rows = aggregateHoursByStaffAndProject(byUser, staff, projects);
+      const workbook = await buildTimesheetWorkbook(rows, `${start} to ${end}`);
+      await downloadWorkbook(workbook, `EvoCo_Hours_${start}_to_${end}.xlsx`);
+      onClose();
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 380, padding: 26 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+          <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>Export Hours to Excel</div>
+          <X size={18} color={C.grey} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Start Date</div>
+          <input type="date" value={start} onChange={(e) => setStart(e.target.value)} style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }} />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>End Date</div>
+          <input type="date" value={end} onChange={(e) => setEnd(e.target.value)} style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }} />
+        </div>
+        {error && <div style={{ color: "#e0736d", fontSize: 12, marginBottom: 12 }}>{error}</div>}
+        <button onClick={runExport} disabled={exporting} style={{ width: "100%", background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: exporting ? 0.6 : 1 }}>
+          {exporting ? "Exporting…" : "Export to Excel"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Approvals() {
   const { profile } = useAuth();
   const [rows, setRows] = useState([]);
-  const [projectsByCode, setProjectsByCode] = useState({});
   const [selected, setSelected] = useState(null);
   const [selectedEntries, setSelectedEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
-  const week = getCurrentWeekBounds();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [finalization, setFinalization] = useState(null);
+  const [finalizing, setFinalizing] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+
+  const week = useMemo(
+    () => getCurrentWeekBounds(new Date(Date.now() + weekOffset * 7 * 86400000)),
+    [weekOffset]
+  );
+  const locked = !!finalization;
 
   const [queryNote, setQueryNote] = useState("");
   const [queryMode, setQueryMode] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [byUser, staff, projects, approvalByUser] = await Promise.all([
+    const [byUser, staff, projects, approvalByUser, weekFinalization] = await Promise.all([
       api.getWeekTimesheets(week.start, week.end),
       api.getStaff(),
       api.getProjects(),
       api.getWeekApprovals(week.end),
+      api.getWeekFinalization(week.end),
     ]);
-    const projMap = {};
-    projects.forEach((p) => { projMap[p.id] = p; });
-    setProjectsByCode(projMap);
+    setFinalization(weekFinalization);
 
-    const built = Object.entries(byUser).map(([userId, entries]) => {
-      const person = staff.find((s) => s.id === userId) || { displayName: "Unknown", id: userId };
-      const workEntries = entries.filter((e) => e.entryType === "work");
-      const totalHours = workEntries.reduce((sum, e) => sum + (e.durationMinutes || 0), 0) / 60;
-      const projectId = entries[0]?.projectId;
-      return {
-        userId,
-        name: person.displayName || person.email || userId,
-        projectCode: projMap[projectId]?.projectCode || "—",
-        hours: totalHours,
-        status: approvalByUser.get(userId) || "pending",
-        entries,
-      };
-    });
+    const aggregated = aggregateHoursByStaffAndProject(byUser, staff, projects);
+    const built = aggregated.map((row) => ({
+      ...row,
+      status: approvalByUser.get(row.userId) || "pending",
+    }));
     setRows(built);
     setLoading(false);
   }, [week.start, week.end]);
@@ -268,7 +320,7 @@ function Approvals() {
       weekEndDate: week.end,
       status: "approved",
       timesheetEntryIds: row.entries.map((e) => e.id),
-      totalHours: row.hours,
+      totalHours: row.totalHours,
     });
     setRows((prev) => prev.map((r) => (r.userId === row.userId ? { ...r, status: "approved" } : r)));
     setBusyId(null);
@@ -282,7 +334,7 @@ function Approvals() {
       weekEndDate: week.end,
       status: "queried",
       timesheetEntryIds: row.entries.map((e) => e.id),
-      totalHours: row.hours,
+      totalHours: row.totalHours,
       notes: queryNote,
     });
     setRows((prev) => prev.map((r) => (r.userId === row.userId ? { ...r, status: "queried" } : r)));
@@ -299,38 +351,89 @@ function Approvals() {
     setQueryNote("");
   };
 
+  const allApproved = rows.length > 0 && rows.every((r) => r.status === "approved");
+
+  const handleFinalize = async () => {
+    setFinalizing(true);
+    await api.finalizeWeek(week.end, profile?.uid);
+    setFinalization({ finalizedBy: profile?.uid });
+    setFinalizing(false);
+  };
+
   if (loading) return <LoadingBlock />;
 
   return (
     <div style={{ padding: 32 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div>
-          <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>Week of {week.label}</div>
-          <div style={{ color: C.grey, fontSize: 12 }}>Sign-off due Friday</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setWeekOffset((o) => o - 1)} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 6, color: C.grey, padding: 6, cursor: "pointer", display: "flex" }}>
+            <ChevronLeft size={16} />
+          </button>
+          <div>
+            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+              Week of {week.label}
+              {locked && <Lock size={14} color={C.good} />}
+            </div>
+            <div style={{ color: C.grey, fontSize: 12 }}>
+              {locked ? "Finalized — approvals locked" : "Sign-off due Friday"}
+            </div>
+          </div>
+          <button
+            onClick={() => setWeekOffset((o) => o + 1)}
+            disabled={weekOffset >= 0}
+            style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 6, color: weekOffset >= 0 ? C.greyDim : C.grey, padding: 6, cursor: weekOffset >= 0 ? "not-allowed" : "pointer", display: "flex" }}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setShowExport(true)} style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>
+            <FileSpreadsheet size={14} /> Export
+          </button>
+          {!locked && (
+            <button
+              onClick={handleFinalize}
+              disabled={!allApproved || finalizing}
+              title={!allApproved ? "Every staff member must be approved first" : ""}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: allApproved ? C.amber : C.bgCardAlt, color: allApproved ? "#1a1400" : C.greyDim, border: "none", borderRadius: 8, padding: "9px 14px", fontSize: 12.5, fontWeight: 700, cursor: allApproved ? "pointer" : "not-allowed", opacity: finalizing ? 0.6 : 1 }}
+            >
+              <Lock size={14} /> {finalizing ? "Finalizing…" : "Finalize Week"}
+            </button>
+          )}
         </div>
       </div>
 
       <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1.2fr", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, color: C.greyDim, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
-          <div>Staff</div><div>Project</div><div>Hours</div><div>Status</div><div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.8fr 2fr 1fr 1fr 1.2fr", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, color: C.greyDim, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>
+          <div>Staff</div><div>Projects</div><div>Total Hours</div><div>Status</div><div></div>
         </div>
         {rows.length === 0 && (
-          <div style={{ padding: 18, color: C.greyDim, fontSize: 13 }}>No timesheet entries logged for this week yet.</div>
+          <div style={{ padding: 18, color: C.greyDim, fontSize: 13 }}>No timesheet entries logged for this week.</div>
         )}
         {rows.map((t) => (
-          <div key={t.userId} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 1.2fr", padding: "16px 18px", alignItems: "center", borderBottom: `1px solid ${C.border}` }}>
+          <div key={t.userId} style={{ display: "grid", gridTemplateColumns: "1.8fr 2fr 1fr 1fr 1.2fr", padding: "16px 18px", alignItems: "center", borderBottom: `1px solid ${C.border}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.bgCardAlt, display: "flex", alignItems: "center", justifyContent: "center", color: C.grey, fontSize: 12, fontWeight: 700 }}>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.bgCardAlt, display: "flex", alignItems: "center", justifyContent: "center", color: C.grey, fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                 {t.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
               </div>
               <span style={{ color: C.white, fontSize: 13.5, fontWeight: 600 }}>{t.name}</span>
             </div>
-            <div style={{ color: C.grey, fontSize: 13 }}>{t.projectCode}</div>
-            <div style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>{t.hours.toFixed(1)}h</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {t.projectHours.length === 0 ? (
+                <span style={{ color: C.greyDim, fontSize: 12.5 }}>—</span>
+              ) : (
+                t.projectHours.map((p) => (
+                  <span key={p.projectCode} style={{ color: C.grey, fontSize: 12.5 }}>
+                    {p.projectCode} <span style={{ color: C.greyDim }}>·</span> {p.hours.toFixed(1)}h
+                  </span>
+                ))
+              )}
+            </div>
+            <div style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>{t.totalHours.toFixed(1)}h</div>
             <div><StatusBadge status={t.status} /></div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={() => openDetail(t)} style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>View</button>
-              {t.status !== "approved" && (
+              {!locked && t.status !== "approved" && (
                 <button onClick={() => approve(t)} disabled={busyId === t.userId} style={{ background: "rgba(76,175,125,0.12)", border: `1px solid ${C.good}`, color: C.good, borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", fontWeight: 600, opacity: busyId === t.userId ? 0.6 : 1 }}>
                   {busyId === t.userId ? "…" : "Approve"}
                 </button>
@@ -344,8 +447,15 @@ function Approvals() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setSelected(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 460, padding: 26 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
-              <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>{selected.name} — {selected.projectCode}</div>
+              <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>{selected.name} — {selected.totalHours.toFixed(1)}h</div>
               <X size={18} color={C.grey} style={{ cursor: "pointer" }} onClick={() => setSelected(null)} />
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {selected.projectHours.map((p) => (
+                <span key={p.projectCode} style={{ background: C.bgCardAlt, borderRadius: 6, padding: "4px 10px", fontSize: 12, color: C.grey }}>
+                  {p.projectCode}: <span style={{ color: C.amber, fontWeight: 600 }}>{p.hours.toFixed(1)}h</span>
+                </span>
+              ))}
             </div>
             {selectedEntries.length === 0 ? (
               <div style={{ color: C.greyDim, fontSize: 13, padding: "10px 0" }}>No entries this week.</div>
@@ -358,7 +468,7 @@ function Approvals() {
                 </div>
               ))
             )}
-            {queryMode ? (
+            {locked ? null : queryMode ? (
               <>
                 <textarea
                   value={queryNote}
@@ -386,6 +496,10 @@ function Approvals() {
             )}
           </div>
         </div>
+      )}
+
+      {showExport && (
+        <ExportModal defaultStart={week.start} defaultEnd={week.end} onClose={() => setShowExport(false)} />
       )}
     </div>
   );
