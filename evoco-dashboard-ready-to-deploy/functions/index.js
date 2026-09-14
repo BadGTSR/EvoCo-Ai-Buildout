@@ -6,11 +6,16 @@
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const { getFirestore } = require("firebase-admin/firestore");
 const nodemailer = require("nodemailer");
 const ExcelJS = require("exceljs");
 
+// Project's Firestore instance is a named database called "default" — not
+// the reserved "(default)" database id firebase-admin assumes otherwise.
+const FIRESTORE_DATABASE_ID = "default";
+
 admin.initializeApp();
-const db = admin.firestore();
+const db = getFirestore(admin.app(), FIRESTORE_DATABASE_ID);
 
 const GMAIL_USER = defineSecret("GMAIL_USER");
 const GMAIL_APP_PASSWORD = defineSecret("GMAIL_APP_PASSWORD");
@@ -82,7 +87,11 @@ async function buildWeekWorkbook(weekStart, weekEnd) {
 }
 
 exports.sendWeeklyApprovalReport = onDocumentCreated(
-  { document: "weekFinalizations/{weekEndDate}", secrets: [GMAIL_USER, GMAIL_APP_PASSWORD] },
+  {
+    document: "weekFinalizations/{weekEndDate}",
+    database: FIRESTORE_DATABASE_ID,
+    secrets: [GMAIL_USER, GMAIL_APP_PASSWORD],
+  },
   async (event) => {
     const weekEndDate = event.params.weekEndDate;
     const weekStartDate = addDaysISO(weekEndDate, -6);
