@@ -29,7 +29,7 @@ export function initOfflineDb() {
 
 // ---- Queueing writes ----------------------------------------------------
 
-function generateClientId() {
+export function generateClientId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
@@ -43,11 +43,15 @@ function generateClientId() {
  * `synced` flag being updated — where a screen fetching "synced + pending"
  * would count the same write twice (once from each source). Callers that
  * merge the two lists dedupe on clientId to close that window.
+ *
+ * Pass an explicit clientId when this write needs to be linked from
+ * elsewhere (e.g. a backdateRequests doc pointing back at the
+ * timesheetEntries doc it was raised for) — otherwise one is generated.
  */
-export function queueWrite(collectionName, payload) {
+export function queueWrite(collectionName, payload, clientId = generateClientId()) {
   const record = {
     ...payload,
-    clientId: generateClientId(),
+    clientId,
     _queuedAt: new Date().toISOString(),
   };
   database.runSync(

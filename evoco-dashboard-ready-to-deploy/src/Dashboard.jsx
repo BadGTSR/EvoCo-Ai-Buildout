@@ -3,8 +3,8 @@ import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, Chevr
 import { useAuth } from "./context/AuthContext";
 import * as api from "./services/dashboardData";
 import LoginScreen from "./LoginScreen";
-import { getCurrentWeekBounds } from "./utils/dateUtils";
-import { aggregateHoursByStaffAndProject, PAYABLE_ENTRY_TYPES } from "./utils/timesheetAggregation";
+import { getCurrentWeekBounds, datesInWeek } from "./utils/dateUtils";
+import { aggregateHoursByStaffAndProject, aggregateDailyHoursByStaff, PAYABLE_ENTRY_TYPES } from "./utils/timesheetAggregation";
 import { buildTimesheetWorkbook, downloadWorkbook } from "./utils/exportExcel";
 
 const C = {
@@ -125,43 +125,54 @@ function StatusBadge({ status }) {
   );
 }
 
+const GRID_DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
 function Overview() {
   const { profile } = useAuth();
   const [stats, setStats] = useState(null);
   const [weekHours, setWeekHours] = useState(null);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(null);
   const [backdateRequests, setBackdateRequests] = useState([]);
+  const [dailyRows, setDailyRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
 
+  const week = useMemo(() => getCurrentWeekBounds(), []);
+  const weekDates = useMemo(() => datesInWeek(week.start), [week.start]);
+
+  const load = useCallback(async () => {
+    const [overview, byUser, requests, staff] = await Promise.all([
+      api.getOverviewStats(week.end),
+      api.getWeekTimesheets(week.start, week.end),
+      api.getPendingBackdateRequests(),
+      api.getStaff(),
+    ]);
+    const workedUserIds = Object.keys(byUser);
+    const totalMinutes = Object.values(byUser)
+      .flat()
+      .filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType))
+      .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
+    setStats(overview);
+    setWeekHours((totalMinutes / 60).toFixed(0));
+    setPendingApprovalCount(workedUserIds.filter((id) => overview.approvalByUser.get(id) !== "approved").length);
+    setBackdateRequests(requests);
+    setDailyRows(aggregateDailyHoursByStaff(byUser, staff, weekDates));
+  }, [week.start, week.end, weekDates]);
+
   useEffect(() => {
     let active = true;
-    const { start, end } = getCurrentWeekBounds();
-
-    Promise.all([api.getOverviewStats(end), api.getWeekTimesheets(start, end), api.getPendingBackdateRequests()])
-      .then(([overview, byUser, requests]) => {
-        if (!active) return;
-        const workedUserIds = Object.keys(byUser);
-        const totalMinutes = Object.values(byUser)
-          .flat()
-          .filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType))
-          .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
-        setStats(overview);
-        setWeekHours((totalMinutes / 60).toFixed(0));
-        setPendingApprovalCount(workedUserIds.filter((id) => overview.approvalByUser.get(id) !== "approved").length);
-        setBackdateRequests(requests);
-        setLoading(false);
-      })
-      .catch(() => active && setLoading(false));
-
+    load().finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, []);
+  }, [load]);
 
   const respond = async (request, status) => {
     setBusyId(request.id);
-    await api.respondToBackdateRequest(request.id, { status, respondedBy: profile?.uid });
-    setBackdateRequests((prev) => prev.filter((r) => r.id !== request.id));
+    await api.respondToBackdateRequest(request.id, { status, respondedBy: profile?.uid, entryClientId: request.entryClientId });
     setStats((prev) => prev && { ...prev, openBackdateRequestCount: Math.max(0, prev.openBackdateRequestCount - 1) });
+    // Approving/rejecting can move hours between the green and red totals
+    // (and, if approved, into a day column), so just reload the grid rather
+    // than try to patch it in place.
+    await load();
     setBusyId(null);
   };
 
@@ -174,6 +185,46 @@ function Overview() {
         <StatCard label="Hours This Week" value={weekHours ?? "—"} sub="Across all staff" />
         <StatCard label="Pending Approvals" value={pendingApprovalCount ?? "—"} color={C.warn} />
         <StatCard label="Open Backdate Requests" value={stats?.openBackdateRequestCount ?? "—"} color={C.warn} />
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+        <div style={{ color: C.white, fontSize: 15, fontWeight: 700 }}>Hours by Staff — Week of {week.label}</div>
+        <div style={{ color: C.greyDim, fontSize: 11.5 }}>Approved hours per day; unapproved backdated hours excluded until approved</div>
+      </div>
+      <div style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 28, overflowX: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.8fr repeat(7, 0.7fr) 0.9fr 0.9fr", padding: "12px 18px", borderBottom: `1px solid ${C.border}`, color: C.greyDim, fontSize: 11, letterSpacing: 1, textTransform: "uppercase", minWidth: 780 }}>
+          <div>Staff</div>
+          {GRID_DAY_LABELS.map((d) => <div key={d} style={{ textAlign: "center" }}>{d}</div>)}
+          <div style={{ textAlign: "center" }}>Approved</div>
+          <div style={{ textAlign: "center" }}>Unapproved</div>
+        </div>
+        {dailyRows.length === 0 && (
+          <div style={{ padding: 18, color: C.greyDim, fontSize: 13 }}>No hours logged for this week yet.</div>
+        )}
+        {dailyRows.map((row, i) => (
+          <div key={row.userId} style={{ display: "grid", gridTemplateColumns: "1.8fr repeat(7, 0.7fr) 0.9fr 0.9fr", padding: "14px 18px", alignItems: "center", borderBottom: i < dailyRows.length - 1 ? `1px solid ${C.border}` : "none", minWidth: 780 }}>
+            <div style={{ color: C.white, fontSize: 13.5, fontWeight: 600 }}>{row.name}</div>
+            {row.dailyHours.map((h, di) => (
+              <div key={di} style={{ textAlign: "center", color: h > 0 ? C.white : C.greyDim, fontSize: 13 }}>
+                {h > 0 ? h.toFixed(1) : "–"}
+              </div>
+            ))}
+            <div style={{ textAlign: "center" }}>
+              <span style={{ background: "rgba(76,175,125,0.12)", color: C.good, borderRadius: 6, padding: "4px 10px", fontSize: 12.5, fontWeight: 700 }}>
+                {row.approvedTotalHours.toFixed(1)}h
+              </span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              {row.unapprovedTotalHours > 0 ? (
+                <span style={{ background: "rgba(224,115,109,0.12)", color: "#e0736d", borderRadius: 6, padding: "4px 10px", fontSize: 12.5, fontWeight: 700 }}>
+                  {row.unapprovedTotalHours.toFixed(1)}h
+                </span>
+              ) : (
+                <span style={{ color: C.greyDim, fontSize: 12.5 }}>–</span>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div style={{ color: C.white, fontSize: 15, fontWeight: 700, marginBottom: 12 }}>Recent Activity</div>

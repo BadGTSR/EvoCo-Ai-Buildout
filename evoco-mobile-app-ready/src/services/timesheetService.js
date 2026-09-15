@@ -13,7 +13,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Alert } from 'react-native';
 import { db, storage } from './firebase';
-import { queueWrite, getPendingWrites, updatePendingWrite } from './offlineSync';
+import { queueWrite, getPendingWrites, updatePendingWrite, generateClientId } from './offlineSync';
 import { localDateString } from '../utils/dateUtils';
 
 /** Firestore Timestamp or plain ISO string (from a not-yet-synced local write) -> comparable millis. */
@@ -88,8 +88,12 @@ export function logTimeEntry({
     backdateApprovalStatus: isBackdated ? 'pending' : null,
   };
 
+  const entryClientId = generateClientId();
+
   if (isBackdated) {
-    // Also raise a visible backdateRequest doc so the worker can track status
+    // Also raise a visible backdateRequest doc so the worker can track
+    // status. entryClientId links it back to the timesheetEntries doc so a
+    // manager's approve/reject can flip that entry's own approval status.
     queueWrite('backdateRequests', {
       userId,
       requestedDate: entryDate,
@@ -98,10 +102,11 @@ export function logTimeEntry({
       durationMinutes,
       reason: notes || 'No reason given',
       status: 'pending',
+      entryClientId,
     });
   }
 
-  queueWrite('timesheetEntries', entry);
+  queueWrite('timesheetEntries', entry, entryClientId);
   return entry;
 }
 
@@ -137,6 +142,10 @@ export async function updateTimeEntry(entry, { startTime, endTime, notes, photoU
       durationMinutes,
       reason: notes || 'No reason given',
       status: 'pending',
+      // Reuse the entry's own clientId (set when it was first logged) rather
+      // than minting a new one — this backdateRequest must point at the
+      // exact same entry, not a fresh identity for it.
+      entryClientId: entry.clientId || generateClientId(),
     });
   }
 

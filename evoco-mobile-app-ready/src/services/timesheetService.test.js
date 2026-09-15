@@ -3,6 +3,7 @@ jest.mock('./offlineSync', () => ({
   queueWrite: jest.fn(),
   getPendingWrites: jest.fn(() => []),
   updatePendingWrite: jest.fn(),
+  generateClientId: jest.fn(() => 'generated-client-id'),
 }));
 jest.mock('firebase/firestore', () => ({
   collection: jest.fn(),
@@ -84,6 +85,13 @@ describe('logTimeEntry', () => {
     const entryPayload = entryCall[1];
     expect(entryPayload.isBackdated).toBe(true);
     expect(entryPayload.backdateApprovalStatus).toBe('pending');
+
+    // The backdateRequests doc must point back at the same entry, via the
+    // clientId queueWrite attaches to the timesheetEntries write — that's
+    // how a manager's approve/reject can later flip the entry's own status.
+    const entryClientIdArg = entryCall[2];
+    expect(entryClientIdArg).toBeTruthy();
+    expect(backdatePayload.entryClientId).toBe(entryClientIdArg);
   });
 
   it('defaults the backdate reason when no notes are given', () => {
@@ -166,7 +174,7 @@ describe('updateTimeEntry', () => {
     const end = new Date(yesterday);
     end.setHours(11, 0, 0, 0);
 
-    const entry = { id: 'entry456', userId: 'u1', projectId: 'p1', stageId: 's1', entryType: 'work' };
+    const entry = { id: 'entry456', clientId: 'existing-client-id', userId: 'u1', projectId: 'p1', stageId: 's1', entryType: 'work' };
 
     await updateTimeEntry(entry, {
       startTime: yesterday.toISOString(),
@@ -178,6 +186,8 @@ describe('updateTimeEntry', () => {
     const backdateCall = queueWrite.mock.calls.find(([name]) => name === 'backdateRequests');
     expect(backdateCall).toBeTruthy();
     expect(backdateCall[1].reason).toBe('Moved to yesterday');
+    // Must reuse the entry's own existing clientId, not mint a new identity for it.
+    expect(backdateCall[1].entryClientId).toBe('existing-client-id');
 
     const [, updates] = updateDoc.mock.calls[0];
     expect(updates.isBackdated).toBe(true);

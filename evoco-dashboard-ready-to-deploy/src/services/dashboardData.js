@@ -194,12 +194,30 @@ export async function getPendingBackdateRequests() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-export async function respondToBackdateRequest(requestId, { status, respondedBy }) {
-  return updateDoc(doc(db, "backdateRequests", requestId), {
+/**
+ * Approve/reject a backdate request AND flip the actual timesheetEntries
+ * doc's own approval status — without this, the entry stays "pending"
+ * forever and never rejoins the normal hours totals even after approval.
+ * entryClientId links the two docs (set when the entry was first logged).
+ */
+export async function respondToBackdateRequest(requestId, { status, respondedBy, entryClientId }) {
+  await updateDoc(doc(db, "backdateRequests", requestId), {
     status,
     respondedBy,
     respondedAt: serverTimestamp(),
   });
+
+  if (entryClientId) {
+    const q = query(collection(db, "timesheetEntries"), where("clientId", "==", entryClientId));
+    const snap = await getDocs(q);
+    await Promise.all(
+      snap.docs.map((d) =>
+        updateDoc(doc(db, "timesheetEntries", d.id), {
+          backdateApprovalStatus: status === "approved" ? "approved" : "rejected",
+        })
+      )
+    );
+  }
 }
 
 // ---------- Overview stats ----------

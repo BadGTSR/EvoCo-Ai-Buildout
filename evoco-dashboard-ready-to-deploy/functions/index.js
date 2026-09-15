@@ -17,6 +17,13 @@ const FIRESTORE_DATABASE_ID = "default";
 // Entry types that count towards paid hours — work and paid breaks. Unpaid breaks don't.
 const PAYABLE_ENTRY_TYPES = ["work", "paid_break"];
 
+// A backdated entry stays excluded from hours until a manager approves it
+// (respondToBackdateRequest flips this on the entry itself, not just the
+// backdateRequests doc) — mirrors isApprovedForHours in the dashboard.
+function isApprovedForHours(entry) {
+  return !entry.isBackdated || entry.backdateApprovalStatus === "approved";
+}
+
 admin.initializeApp();
 const db = getFirestore(admin.app(), FIRESTORE_DATABASE_ID);
 
@@ -63,7 +70,7 @@ async function buildWeekWorkbook(weekStart, weekEnd) {
   for (const [userId, entries] of Object.entries(byUser)) {
     const person = staff.find((s) => s.id === userId) || { displayName: "Unknown" };
     const name = person.displayName || person.email || userId;
-    const workEntries = entries.filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType));
+    const workEntries = entries.filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType) && isApprovedForHours(e));
 
     const minutesByProject = {};
     for (const e of workEntries) {

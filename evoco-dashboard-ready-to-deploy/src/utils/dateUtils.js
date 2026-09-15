@@ -15,3 +15,14 @@ export function getCurrentWeekBounds(now = new Date()) {
     label: `${monday.toLocaleDateString("en-NZ", { day: "numeric", month: "short" })}–${sunday.toLocaleDateString("en-NZ", { day: "numeric", month: "short", year: "numeric" })}`,
   };
 }
+
+/** The 7 local "YYYY-MM-DD" dates from a week's Monday start through Sunday, for day-by-day breakdowns. */
+export function datesInWeek(weekStartISO) {
+  const [y, m, d] = weekStartISO.split("-").map(Number);
+  const start = new Date(y, m - 1, d);
+  return Array.from({ length: 7 }, (_, i) => {
+    const dt = new Date(start);
+    dt.setDate(start.getDate() + i);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  });
+}

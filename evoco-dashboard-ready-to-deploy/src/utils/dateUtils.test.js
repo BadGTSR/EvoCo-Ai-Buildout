@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getCurrentWeekBounds } from "./dateUtils";
+import { getCurrentWeekBounds, datesInWeek } from "./dateUtils";
 
 function localMidnight(y, m, d) {
   return new Date(y, m - 1, d);
@@ -36,5 +36,31 @@ describe("getCurrentWeekBounds", () => {
     expect(label).toContain("14");
     expect(label).toContain("20");
     expect(label).toContain("2026");
+  });
+});
+
+describe("datesInWeek", () => {
+  it("returns the 7 consecutive dates from Monday through Sunday", () => {
+    expect(datesInWeek("2026-09-14")).toEqual([
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-09-18",
+      "2026-09-19",
+      "2026-09-20",
+    ]);
+  });
+
+  it("crosses a month boundary correctly", () => {
+    expect(datesInWeek("2026-09-28")).toEqual([
+      "2026-09-28",
+      "2026-09-29",
+      "2026-09-30",
+      "2026-10-01",
+      "2026-10-02",
+      "2026-10-03",
+      "2026-10-04",
+    ]);
   });
 });
