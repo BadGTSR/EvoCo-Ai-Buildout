@@ -1,4 +1,4 @@
-import { localDateString, formatEntryDate, combineDateAndTime } from './dateUtils';
+import { localDateString, formatEntryDate, combineDateAndTime, defaultStartTimeForDate } from './dateUtils';
 
 describe('localDateString', () => {
   it('formats a local date as YYYY-MM-DD using local, not UTC, components', () => {
@@ -57,5 +57,24 @@ describe('combineDateAndTime', () => {
     const combined = combineDateAndTime(new Date(2026, 8, 10), new Date(2000, 0, 1, 9, 5, 59, 999));
     expect(combined.getSeconds()).toBe(0);
     expect(combined.getMilliseconds()).toBe(0);
+  });
+});
+
+describe('defaultStartTimeForDate', () => {
+  it('reuses the latest end time when staying on the same date and resets on a new date', () => {
+    const entries = [
+      { startTime: '2026-09-15T08:00:00', endTime: '2026-09-15T12:00:00' },
+      { startTime: '2026-09-14T09:00:00', endTime: '2026-09-14T10:30:00' },
+    ];
+
+    const sameDay = defaultStartTimeForDate(entries, new Date(2026, 8, 15));
+    expect(localDateString(sameDay)).toBe('2026-09-15');
+    expect(sameDay.getHours()).toBe(12);
+    expect(sameDay.getMinutes()).toBe(0);
+
+    const differentDay = defaultStartTimeForDate(entries, new Date(2026, 8, 16));
+    expect(localDateString(differentDay)).toBe('2026-09-16');
+    expect(differentDay.getHours()).toBe(0);
+    expect(differentDay.getMinutes()).toBe(0);
   });
 });

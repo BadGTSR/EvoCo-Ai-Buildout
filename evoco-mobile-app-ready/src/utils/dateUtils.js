@@ -23,3 +23,28 @@ export function combineDateAndTime(entryDate, time) {
   combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
   return combined;
 }
+
+/** Returns the default new-entry start time for a selected date.
+ * If there are entries ending later on that date, chain from the latest end time;
+ * otherwise start at 00:00 on the selected date.
+ */
+export function defaultStartTimeForDate(entries, selectedDate) {
+  const dateKey = localDateString(selectedDate);
+  const sameDayEntries = entries.filter((entry) => {
+    if (!entry?.endTime) return false;
+    return localDateString(new Date(entry.endTime)) === dateKey;
+  });
+
+  if (sameDayEntries.length === 0) {
+    const reset = new Date(selectedDate);
+    reset.setHours(0, 0, 0, 0);
+    return reset;
+  }
+
+  const latestEndTime = sameDayEntries.reduce((latest, entry) => {
+    const end = new Date(entry.endTime).getTime();
+    return !latest || end > latest ? end : latest;
+  }, null);
+
+  return new Date(latestEndTime);
+}

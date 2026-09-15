@@ -18,8 +18,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
 import { logTimeEntry, updateTimeEntry, uploadTimesheetPhoto, getEntriesForDate } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
-import { formatEntryDate, combineDateAndTime, localDateString } from '../utils/dateUtils';
-import { findOverlappingEntry, latestEndTime } from '../utils/timeOverlap';
+import { formatEntryDate, combineDateAndTime, localDateString, defaultStartTimeForDate } from '../utils/dateUtils';
+import { findOverlappingEntry } from '../utils/timeOverlap';
 
 function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -57,16 +57,17 @@ export default function TimeLogScreen({ navigation, route }) {
     if (isBreak) setEndTime(new Date(startTime.getTime() + durationMinutes * 60000));
   }, [isBreak, startTime, durationMinutes]);
 
-  // New (non-edit) entries default their start to right after whatever was
-  // logged last today, so times naturally chain instead of overlapping.
+  // New (non-edit) entries default their start to right after the last logged
+  // time on the selected date, and reset to 00:00 when the day changes.
   useEffect(() => {
-    if (isEditing) return;
+    if (isEditing || !user?.uid) return;
     getEntriesForDate(user.uid, localDateString(entryDate)).then((todays) => {
-      const chained = latestEndTime(todays);
-      if (chained) setStartTime(chained);
+      const defaultStart = defaultStartTimeForDate(todays, entryDate);
+      setStartTime(defaultStart);
+      setEndTime(null);
+      setDurationMinutes(breakOption?.defaultMinutes || 30);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [entryDate, isEditing, user?.uid]);
 
   const addPhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();

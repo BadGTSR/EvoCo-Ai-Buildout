@@ -1,4 +1,4 @@
-import { rangesOverlap, findOverlappingEntry, latestEndTime } from './timeOverlap';
+import { rangesOverlap, findOverlappingEntry } from './timeOverlap';
 
 describe('rangesOverlap', () => {
   it('is true when one range starts inside the other', () => {
@@ -38,20 +38,5 @@ describe('findOverlappingEntry', () => {
     // Editing e2 to keep the exact same range shouldn't conflict with itself
     const conflict = findOverlappingEntry('2026-09-15T09:00:00', '2026-09-15T17:00:00', entries, 'e2');
     expect(conflict).toBeUndefined();
-  });
-});
-
-describe('latestEndTime', () => {
-  it('returns null for an empty list', () => {
-    expect(latestEndTime([])).toBeNull();
-  });
-
-  it('returns the latest endTime across entries regardless of order', () => {
-    const entries = [
-      { startTime: '2026-09-15T09:00:00', endTime: '2026-09-15T12:00:00' },
-      { startTime: '2026-09-15T06:30:00', endTime: '2026-09-15T09:00:00' },
-    ];
-    const latest = latestEndTime(entries);
-    expect(latest.toISOString()).toBe(new Date('2026-09-15T12:00:00').toISOString());
   });
 });

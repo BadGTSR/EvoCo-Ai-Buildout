@@ -19,12 +19,3 @@ export function findOverlappingEntry(start, end, entries, excludeId) {
     return rangesOverlap(start, end, e.startTime, e.endTime);
   });
 }
-
-/** The latest endTime among a day's entries, or null if there are none — used to chain the next entry's start. */
-export function latestEndTime(entries) {
-  if (entries.length === 0) return null;
-  return entries.reduce((latest, e) => {
-    const end = new Date(e.endTime);
-    return !latest || end > latest ? end : latest;
-  }, null);
-}
