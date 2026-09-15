@@ -1,7 +1,7 @@
 // EvoCo Timesheet App — Navigation Stack
 // Flow: QR scan → H&S questionnaire → check-in confirmed → login →
-//       dashboard → project → stage → time log → daily summary
-// "My Requests" is reachable from the dashboard at any point.
+//       today's entries (home) → project → stage → time log → back to
+//       today's entries. "My Requests" is reachable from there at any point.
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -16,7 +16,6 @@ import ManualSiteSelectScreen from '../screens/ManualSiteSelectScreen';
 import HsQuestionnaireScreen from '../screens/HsQuestionnaireScreen';
 import CheckInConfirmedScreen from '../screens/CheckInConfirmedScreen';
 import LoginScreen from '../screens/LoginScreen';
-import DashboardScreen from '../screens/DashboardScreen';
 import ProjectSelectorScreen from '../screens/ProjectSelectorScreen';
 import StageSelectorScreen from '../screens/StageSelectorScreen';
 import TimeLogScreen from '../screens/TimeLogScreen';
@@ -57,13 +56,13 @@ export default function AppNavigator() {
             <Stack.Screen name="AppLogin" component={LoginScreen} options={{ headerShown: false }} />
           </>
         ) : (
-          // Authenticated flow: logging time against projects and stages
+          // Authenticated flow: today's entries is home; logging time against
+          // projects/stages always cycles back to it.
           <>
-            <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Today', headerBackVisible: false }} />
+            <Stack.Screen name="DailySummary" component={DailySummaryScreen} options={{ title: "Today's Entries", headerBackVisible: false }} />
             <Stack.Screen name="ProjectSelector" component={ProjectSelectorScreen} options={{ title: 'Select Project' }} />
             <Stack.Screen name="StageSelector" component={StageSelectorScreen} options={{ title: 'Select Stage' }} />
             <Stack.Screen name="TimeLog" component={TimeLogScreen} options={{ title: 'Log Time' }} />
-            <Stack.Screen name="DailySummary" component={DailySummaryScreen} options={{ title: "Today's Entries" }} />
             <Stack.Screen name="MyRequests" component={MyRequestsScreen} options={{ title: 'My Requests' }} />
           </>
         )}

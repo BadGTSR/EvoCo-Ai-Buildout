@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
-import { logTimeEntry, uploadTimesheetPhoto } from '../services/timesheetService';
+import { logTimeEntry, updateTimeEntry, uploadTimesheetPhoto } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
 import { formatEntryDate, combineDateAndTime } from '../utils/dateUtils';
 
@@ -25,17 +25,23 @@ function formatTime(date) {
 }
 
 export default function TimeLogScreen({ navigation, route }) {
-  const { site, project, stage } = route.params;
+  const { site, project, stage, entry } = route.params;
+  const isEditing = !!entry;
   const { user } = useAuth();
 
-  const [entryDate, setEntryDate] = useState(new Date());
-  const [startTime, setStartTime] = useState(new Date());
-  const [endTime, setEndTime] = useState(null);
-  const [notes, setNotes] = useState('');
-  const [photos, setPhotos] = useState([]); // local URIs, uploaded on save
+  const [entryDate, setEntryDate] = useState(entry ? new Date(entry.startTime) : new Date());
+  const [startTime, setStartTime] = useState(entry ? new Date(entry.startTime) : new Date());
+  const [endTime, setEndTime] = useState(entry ? new Date(entry.endTime) : null);
+  const [notes, setNotes] = useState(entry?.notes || '');
+  const [photos, setPhotos] = useState([]); // newly-added local URIs, uploaded on save
+  const [existingPhotoUrls, setExistingPhotoUrls] = useState(entry?.photoUrls || []); // already-uploaded, kept unless removed
   const [saving, setSaving] = useState(false);
   // Which field's picker is open — only ever one at a time.
   const [activePicker, setActivePicker] = useState(null); // null | 'date' | 'start' | 'end'
+
+  useEffect(() => {
+    navigation.setOptions({ title: isEditing ? 'Edit Entry' : 'Log Time' });
+  }, [isEditing]);
 
   const addPhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -53,6 +59,10 @@ export default function TimeLogScreen({ navigation, route }) {
     setPhotos((prev) => prev.filter((p) => p !== uri));
   };
 
+  const removeExistingPhoto = (url) => {
+    setExistingPhotoUrls((prev) => prev.filter((p) => p !== url));
+  };
+
   const handleSave = async () => {
     if (!endTime) {
       Alert.alert('End time needed', 'Set an end time before saving this entry.');
@@ -60,28 +70,38 @@ export default function TimeLogScreen({ navigation, route }) {
     }
     setSaving(true);
     try {
-      const photoUrls = [];
+      const newPhotoUrls = [];
       for (const localUri of photos) {
         const url = await uploadTimesheetPhoto({
           projectCode: project.projectCode,
           userId: user.uid,
           localUri,
         });
-        photoUrls.push(url);
+        newPhotoUrls.push(url);
       }
+      const photoUrls = [...existingPhotoUrls, ...newPhotoUrls];
 
-      logTimeEntry({
-        userId: user.uid,
-        projectId: project.id,
-        stageId: stage.id,
-        entryType: 'work',
-        startTime: combineDateAndTime(entryDate, startTime).toISOString(),
-        endTime: combineDateAndTime(entryDate, endTime).toISOString(),
-        notes,
-        photoUrls,
-      });
-
-      navigation.navigate('DailySummary', { site, justLoggedEntry: true });
+      if (isEditing) {
+        await updateTimeEntry(entry, {
+          startTime: combineDateAndTime(entryDate, startTime).toISOString(),
+          endTime: combineDateAndTime(entryDate, endTime).toISOString(),
+          notes,
+          photoUrls,
+        });
+        navigation.goBack();
+      } else {
+        logTimeEntry({
+          userId: user.uid,
+          projectId: project.id,
+          stageId: stage.id,
+          entryType: 'work',
+          startTime: combineDateAndTime(entryDate, startTime).toISOString(),
+          endTime: combineDateAndTime(entryDate, endTime).toISOString(),
+          notes,
+          photoUrls,
+        });
+        navigation.navigate('DailySummary', { site, justLoggedEntry: true });
+      }
     } catch (err) {
       Alert.alert('Couldn\u2019t save', err.message || 'Something went wrong saving this entry.');
     } finally {
@@ -188,6 +208,14 @@ export default function TimeLogScreen({ navigation, route }) {
 
       <Text style={styles.fieldLabel}>Photos (optional)</Text>
       <View style={styles.photoRow}>
+        {existingPhotoUrls.map((url) => (
+          <TouchableOpacity key={url} onPress={() => removeExistingPhoto(url)} style={styles.photoThumbWrap}>
+            <Image source={{ uri: url }} style={styles.photoThumb} />
+            <View style={styles.photoRemoveBadge}>
+              <Text style={styles.photoRemoveText}>×</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
         {photos.map((uri) => (
           <TouchableOpacity key={uri} onPress={() => removePhoto(uri)} style={styles.photoThumbWrap}>
             <Image source={{ uri }} style={styles.photoThumb} />
@@ -209,7 +237,7 @@ export default function TimeLogScreen({ navigation, route }) {
         {saving ? (
           <ActivityIndicator color="#141414" />
         ) : (
-          <Text style={styles.saveButtonText}>Save Entry</Text>
+          <Text style={styles.saveButtonText}>{isEditing ? 'Save Changes' : 'Save Entry'}</Text>
         )}
       </TouchableOpacity>
       </ScrollView>

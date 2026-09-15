@@ -29,14 +29,25 @@ export function initOfflineDb() {
 
 // ---- Queueing writes ----------------------------------------------------
 
+function generateClientId() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * Queue a write locally. Call this instead of writing to Firestore directly
  * from any screen (timesheet entry, attendance, backdate request).
  * Returns immediately — the UI can show "Saved" right away.
+ *
+ * Every record gets a clientId that travels with it into Firestore. Without
+ * that, there's a window — between addDoc() succeeding and this row's
+ * `synced` flag being updated — where a screen fetching "synced + pending"
+ * would count the same write twice (once from each source). Callers that
+ * merge the two lists dedupe on clientId to close that window.
  */
 export function queueWrite(collectionName, payload) {
   const record = {
     ...payload,
+    clientId: generateClientId(),
     _queuedAt: new Date().toISOString(),
   };
   database.runSync(
@@ -129,4 +140,17 @@ export function getPendingWrites(collectionName) {
     const payload = JSON.parse(row.payload);
     return { id: `pending_${row.id}`, ...payload, createdAt: payload._queuedAt, _pending: true };
   });
+}
+
+/**
+ * Edit a write that hasn't synced to Firestore yet (id from getPendingWrites,
+ * e.g. "pending_42"). Merges into the still-local payload before it's ever
+ * pushed, so there's nothing to reconcile server-side.
+ */
+export function updatePendingWrite(pendingId, updates) {
+  const rowId = pendingId.replace('pending_', '');
+  const row = database.getFirstSync(`SELECT payload FROM pending_writes WHERE id = ?;`, [rowId]);
+  if (!row) return;
+  const payload = { ...JSON.parse(row.payload), ...updates };
+  database.runSync(`UPDATE pending_writes SET payload = ? WHERE id = ?;`, [JSON.stringify(payload), rowId]);
 }

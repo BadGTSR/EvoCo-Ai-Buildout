@@ -7,10 +7,12 @@ import {
   where,
   getDocs,
   orderBy,
+  doc,
+  updateDoc,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
-import { queueWrite, getPendingWrites } from './offlineSync';
+import { queueWrite, getPendingWrites, updatePendingWrite } from './offlineSync';
 import { localDateString } from '../utils/dateUtils';
 
 /** Firestore Timestamp or plain ISO string (from a not-yet-synced local write) -> comparable millis. */
@@ -18,6 +20,20 @@ function toMillis(createdAt) {
   if (!createdAt) return 0;
   if (typeof createdAt.toMillis === 'function') return createdAt.toMillis();
   return new Date(createdAt).getTime();
+}
+
+/**
+ * Combine a synced (Firestore) list with the still-local pending queue,
+ * dropping any pending record that's already synced. There's a real window
+ * — between addDoc() succeeding and the local row being marked synced —
+ * where the same write shows up in both lists; clientId (set by queueWrite)
+ * is the stable key that survives the trip through Firestore, so it's what
+ * dedup has to key on rather than either side's own id.
+ */
+function mergeSyncedAndPending(synced, pending) {
+  const syncedClientIds = new Set(synced.map((e) => e.clientId).filter(Boolean));
+  const stillPending = pending.filter((e) => !syncedClientIds.has(e.clientId));
+  return [...synced, ...stillPending];
 }
 
 const BREAK_TYPES = {
@@ -77,6 +93,48 @@ export function logTimeEntry({
   return entry;
 }
 
+/**
+ * Edit an existing entry. Same-day edits apply immediately. If the entry's
+ * day has already ended by the time it's edited (or the date is changed
+ * away from today), it's treated exactly like logging a new backdated
+ * entry — flagged and routed through manager approval.
+ */
+export async function updateTimeEntry(entry, { startTime, endTime, notes, photoUrls }) {
+  const today = localDateString();
+  const entryDate = localDateString(new Date(startTime));
+  const isBackdated = entryDate !== today;
+  const durationMinutes = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
+
+  const updates = {
+    startTime,
+    endTime,
+    durationMinutes,
+    notes: notes || '',
+    photoUrls,
+    date: entryDate,
+    isBackdated,
+    backdateApprovalStatus: isBackdated ? 'pending' : null,
+  };
+
+  if (isBackdated) {
+    queueWrite('backdateRequests', {
+      userId: entry.userId,
+      requestedDate: entryDate,
+      projectId: entry.projectId,
+      stageId: entry.stageId,
+      durationMinutes,
+      reason: notes || 'No reason given',
+      status: 'pending',
+    });
+  }
+
+  if (entry._pending) {
+    updatePendingWrite(entry.id, updates);
+  } else {
+    await updateDoc(doc(db, 'timesheetEntries', entry.id), updates);
+  }
+}
+
 /** Quick-log a break — appears in the same project/stage selector list */
 export function logBreak({ userId, projectId, breakKey, startTime }) {
   const breakDef = BREAK_TYPES[breakKey];
@@ -120,7 +178,7 @@ export async function getMyBackdateRequests(userId) {
   // logged with no signal is invisible until it happens to sync.
   const pending = getPendingWrites('backdateRequests').filter((r) => r.userId === userId);
 
-  return [...synced, ...pending].sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
+  return mergeSyncedAndPending(synced, pending).sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
 }
 
 /** Get all entries for a user on a given date — for the daily summary screen */
@@ -139,7 +197,7 @@ export async function getEntriesForDate(userId, date) {
     (e) => e.userId === userId && e.date === date
   );
 
-  return [...synced, ...pending];
+  return mergeSyncedAndPending(synced, pending);
 }
 
 export { BREAK_TYPES };

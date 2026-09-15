@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing } from '../theme';
 import { getEntriesForDate } from '../services/timesheetService';
 import { getMyProjects, getStagesForProject } from '../services/projectService';
+import { getPendingCount } from '../services/offlineSync';
 import { useAuth } from '../context/AuthContext';
 import { localDateString } from '../utils/dateUtils';
 
@@ -18,12 +19,14 @@ function formatTime(iso) {
 }
 
 export default function DailySummaryScreen({ navigation, route }) {
-  const { site } = route.params || {};
-  const { user } = useAuth();
+  const { user, activeSite } = useAuth();
+  const site = route.params?.site || activeSite;
   const [entries, setEntries] = useState([]);
   const [projectsById, setProjectsById] = useState({});
   const [stagesById, setStagesById] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   const today = localDateString();
 
@@ -32,6 +35,7 @@ export default function DailySummaryScreen({ navigation, route }) {
     const data = await getEntriesForDate(user.uid, today);
     const sorted = data.sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
     setEntries(sorted);
+    setPendingCount(getPendingCount());
 
     const projects = await getMyProjects(user.uid);
     setProjectsById(Object.fromEntries(projects.map((p) => [p.id, p])));
@@ -40,24 +44,48 @@ export default function DailySummaryScreen({ navigation, route }) {
     const stageLists = await Promise.all(projectIds.map((id) => getStagesForProject(id)));
     const stageEntries = stageLists.flat().map((s) => [s.id, s]);
     setStagesById(Object.fromEntries(stageEntries));
-
-    setLoading(false);
   }, [user, today]);
 
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
-      load();
+      load().finally(() => setLoading(false));
     }, [load])
   );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  };
 
   const totalMinutes = entries
     .filter((e) => e.entryType === 'work')
     .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
 
+  const editEntry = (item) => {
+    const project = projectsById[item.projectId];
+    const stage = stagesById[item.stageId];
+    if (item.entryType !== 'work' || !project || !stage) return; // only real work entries, resolved, are editable
+    navigation.navigate('TimeLog', { site, project, stage, entry: item });
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Today's Entries</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>Today's Entries</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('MyRequests')}>
+          <Text style={styles.headerLink}>My Requests</Text>
+        </TouchableOpacity>
+      </View>
+
+      {pendingCount > 0 && (
+        <View style={styles.syncBanner}>
+          <Text style={styles.syncBannerText}>
+            {pendingCount} {pendingCount === 1 ? 'entry' : 'entries'} waiting to sync
+          </Text>
+        </View>
+      )}
 
       {loading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.xl }} />
@@ -66,15 +94,22 @@ export default function DailySummaryScreen({ navigation, route }) {
           data={entries}
           keyExtractor={(item, idx) => item.id ?? String(idx)}
           contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
           renderItem={({ item }) => {
             const project = projectsById[item.projectId];
             const stage = stagesById[item.stageId];
             const title = project
               ? `${project.projectCode} · ${stage ? stage.stageName : ENTRY_TYPE_LABELS[item.entryType] ?? item.entryType}`
               : ENTRY_TYPE_LABELS[item.entryType] ?? item.entryType;
+            const editable = item.entryType === 'work' && project && stage;
 
             return (
-              <View style={styles.entryCard}>
+              <TouchableOpacity
+                style={styles.entryCard}
+                onPress={() => editEntry(item)}
+                disabled={!editable}
+                activeOpacity={editable ? 0.6 : 1}
+              >
                 <View style={styles.entryTopRow}>
                   <Text style={styles.entryTitle}>{title}</Text>
                   <Text style={styles.entryHours}>{((item.durationMinutes || 0) / 60).toFixed(1)}h</Text>
@@ -88,7 +123,8 @@ export default function DailySummaryScreen({ navigation, route }) {
                 {item.photoUrls?.length > 0 && (
                   <Text style={styles.photoCount}>📷 {item.photoUrls.length}</Text>
                 )}
-              </View>
+                {editable && <Text style={styles.editHint}>Tap to edit</Text>}
+              </TouchableOpacity>
             );
           }}
           ListEmptyComponent={
@@ -106,7 +142,7 @@ export default function DailySummaryScreen({ navigation, route }) {
         style={styles.addButton}
         onPress={() => navigation.navigate('ProjectSelector', { site })}
       >
-        <Text style={styles.addButtonText}>+ Add another entry</Text>
+        <Text style={styles.addButtonText}>+ Log Time</Text>
       </TouchableOpacity>
     </View>
   );
@@ -114,7 +150,19 @@ export default function DailySummaryScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: spacing.lg },
-  header: { color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: spacing.md },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: spacing.md },
+  header: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  headerLink: { color: colors.textMuted, fontSize: 13, textDecorationLine: 'underline' },
+  syncBanner: {
+    backgroundColor: 'rgba(242,169,31,0.1)',
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  syncBannerText: { color: colors.accent, fontSize: 12.5, fontWeight: '600' },
   list: { paddingBottom: spacing.md },
   entryCard: {
     backgroundColor: colors.surface,
@@ -131,6 +179,7 @@ const styles = StyleSheet.create({
   entryNotes: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
   backdatedTag: { color: colors.accent, fontSize: 11, fontWeight: '700', marginTop: 4 },
   photoCount: { color: colors.textMuted, fontSize: 12, marginTop: 4 },
+  editHint: { color: colors.textMuted, fontSize: 11, marginTop: 6, fontStyle: 'italic' },
   emptyText: { color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl },
   totalRow: {
     flexDirection: 'row',
@@ -144,11 +193,10 @@ const styles = StyleSheet.create({
   totalLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
   totalHours: { color: colors.accent, fontSize: 18, fontWeight: '700' },
   addButton: {
-    borderWidth: 1,
-    borderColor: colors.accent,
+    backgroundColor: colors.accent,
     borderRadius: 8,
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: 'center',
   },
-  addButtonText: { color: colors.accent, fontWeight: '700' },
+  addButtonText: { color: '#141414', fontWeight: '700', fontSize: 16 },
 });
