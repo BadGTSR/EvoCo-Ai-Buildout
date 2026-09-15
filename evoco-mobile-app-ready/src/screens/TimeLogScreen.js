@@ -52,6 +52,10 @@ export default function TimeLogScreen({ navigation, route }) {
   // Earliest start time allowed for the selected date (the latest end time
   // already logged that day), or null when there's nothing to chain from yet.
   const [minStartTime, setMinStartTime] = useState(null);
+  // Set once the user manually picks a start time, so the async default-start
+  // lookup below (keyed off a Firestore fetch) can't clobber their choice if
+  // it resolves after they've already picked.
+  const userPickedStartRef = useRef(false);
   // React's `disabled={saving}` can't block a second tap that lands before
   // the re-render commits — this ref is checked synchronously so a fast
   // double-tap can't fire handleSave twice.
@@ -67,15 +71,22 @@ export default function TimeLogScreen({ navigation, route }) {
   }, [isBreak, startTime, durationMinutes]);
 
   // New (non-edit) entries default their start to right after the last logged
-  // time on the selected date, or 6am if nothing's logged there yet.
+  // time on the selected date, or 6am if nothing's logged there yet. The
+  // end/duration reset happens immediately (synchronously) so there's no
+  // window for a quick end-time pick to get wiped once the fetch below
+  // resolves; the fetch itself only ever fills in defaults, never a value
+  // the user has already picked.
   useEffect(() => {
-    if (isEditing || !user?.uid) return;
+    if (isEditing) return;
+    setEndTime(null);
+    setDurationMinutes(breakOption?.defaultMinutes || 30);
+    userPickedStartRef.current = false;
+    if (!user?.uid) return;
     getEntriesForDate(user.uid, localDateString(entryDate)).then((todays) => {
-      const defaultStart = defaultStartTimeForDate(todays, entryDate);
-      setStartTime(defaultStart);
       setMinStartTime(earliestAllowedStartForDate(todays, entryDate));
-      setEndTime(null);
-      setDurationMinutes(breakOption?.defaultMinutes || 30);
+      if (!userPickedStartRef.current) {
+        setStartTime(defaultStartTimeForDate(todays, entryDate));
+      }
     });
   }, [entryDate, isEditing, user?.uid]);
 
@@ -177,6 +188,7 @@ export default function TimeLogScreen({ navigation, route }) {
     if (event.type === 'dismissed' || !selected) return;
     if (activePicker === 'date') setEntryDate(selected);
     else if (activePicker === 'start') {
+      userPickedStartRef.current = true;
       // Android's time picker can't enforce minimumDate natively, so clamp
       // here too — the iOS spinner already stops itself at minStartTime.
       setStartTime(minStartTime && selected < minStartTime ? minStartTime : selected);
