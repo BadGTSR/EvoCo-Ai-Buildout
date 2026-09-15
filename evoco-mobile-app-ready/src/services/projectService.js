@@ -35,6 +35,16 @@ export function getBreakOptions() {
     id: `break_${key}`,
     breakKey: key,
     label: def.label,
+    entryType: def.entryType,
+    defaultMinutes: def.minutes,
     isBreak: true,
   }));
+}
+
+/** Look up a break's display info from a logged entry's entryType — for editing an already-logged break. */
+export function getBreakOptionForEntryType(entryType) {
+  const match = Object.entries(BREAK_TYPES).find(([, def]) => def.entryType === entryType);
+  if (!match) return null;
+  const [key, def] = match;
+  return { id: `break_${key}`, breakKey: key, label: def.label, entryType: def.entryType, defaultMinutes: def.minutes, isBreak: true };
 }

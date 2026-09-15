@@ -41,7 +41,7 @@ describe("aggregateHoursByStaffAndProject", () => {
     expect(row.projectHours).toEqual([{ projectCode: "PRJ-A", hours: 2.5 }]);
   });
 
-  it("excludes breaks from hours", () => {
+  it("counts paid breaks towards hours but excludes unpaid breaks", () => {
     const entriesByUser = {
       u1: [
         { entryType: "work", projectId: "p1", durationMinutes: 240 },
@@ -51,7 +51,7 @@ describe("aggregateHoursByStaffAndProject", () => {
     };
 
     const [row] = aggregateHoursByStaffAndProject(entriesByUser, staff, projects);
-    expect(row.totalHours).toBe(4);
+    expect(row.totalHours).toBe(4.5);
   });
 
   it("handles multiple staff independently", () => {

@@ -2,8 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing } from '../theme';
-import { getEntriesForDate } from '../services/timesheetService';
-import { getMyProjects, getStagesForProject } from '../services/projectService';
+import { getEntriesForDate, PAYABLE_ENTRY_TYPES } from '../services/timesheetService';
+import { getMyProjects, getStagesForProject, getBreakOptionForEntryType } from '../services/projectService';
 import { getPendingCount } from '../services/offlineSync';
 import { useAuth } from '../context/AuthContext';
 import { localDateString } from '../utils/dateUtils';
@@ -60,14 +60,23 @@ export default function DailySummaryScreen({ navigation, route }) {
   };
 
   const totalMinutes = entries
-    .filter((e) => e.entryType === 'work')
+    .filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType))
     .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
 
   const editEntry = (item) => {
     const project = projectsById[item.projectId];
-    const stage = stagesById[item.stageId];
-    if (item.entryType !== 'work' || !project || !stage) return; // only real work entries, resolved, are editable
-    navigation.navigate('TimeLog', { site, project, stage, entry: item });
+    if (!project) return;
+
+    if (item.entryType === 'work') {
+      const stage = stagesById[item.stageId];
+      if (!stage) return;
+      navigation.navigate('TimeLog', { site, project, stage, entry: item });
+      return;
+    }
+
+    const breakOption = getBreakOptionForEntryType(item.entryType);
+    if (!breakOption) return;
+    navigation.navigate('TimeLog', { site, project, breakOption, entry: item });
   };
 
   return (
@@ -101,7 +110,7 @@ export default function DailySummaryScreen({ navigation, route }) {
             const title = project
               ? `${project.projectCode} · ${stage ? stage.stageName : ENTRY_TYPE_LABELS[item.entryType] ?? item.entryType}`
               : ENTRY_TYPE_LABELS[item.entryType] ?? item.entryType;
-            const editable = item.entryType === 'work' && project && stage;
+            const editable = item.entryType === 'work' ? !!(project && stage) : !!project;
 
             return (
               <TouchableOpacity

@@ -4,7 +4,7 @@ import { useAuth } from "./context/AuthContext";
 import * as api from "./services/dashboardData";
 import LoginScreen from "./LoginScreen";
 import { getCurrentWeekBounds } from "./utils/dateUtils";
-import { aggregateHoursByStaffAndProject } from "./utils/timesheetAggregation";
+import { aggregateHoursByStaffAndProject, PAYABLE_ENTRY_TYPES } from "./utils/timesheetAggregation";
 import { buildTimesheetWorkbook, downloadWorkbook } from "./utils/exportExcel";
 
 const C = {
@@ -144,7 +144,7 @@ function Overview() {
         const workedUserIds = Object.keys(byUser);
         const totalMinutes = Object.values(byUser)
           .flat()
-          .filter((e) => e.entryType === "work")
+          .filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType))
           .reduce((sum, e) => sum + (e.durationMinutes || 0), 0);
         setStats(overview);
         setWeekHours((totalMinutes / 60).toFixed(0));

@@ -41,6 +41,9 @@ const BREAK_TYPES = {
   UNPAID_BREAK: { entryType: 'unpaid_break', label: 'Unpaid Break (incl. lunch)', minutes: 30 },
 };
 
+/** Entry types that count toward a day's/week's paid total — work and paid breaks. Unpaid breaks don't. */
+export const PAYABLE_ENTRY_TYPES = ['work', 'paid_break'];
+
 /**
  * Log a timesheet entry. Same-day entries go straight in.
  * Entries for a different date are flagged and routed as a
@@ -135,21 +138,6 @@ export async function updateTimeEntry(entry, { startTime, endTime, notes, photoU
   }
 }
 
-/** Quick-log a break — appears in the same project/stage selector list */
-export function logBreak({ userId, projectId, breakKey, startTime }) {
-  const breakDef = BREAK_TYPES[breakKey];
-  const endTime = new Date(new Date(startTime).getTime() + breakDef.minutes * 60000).toISOString();
-
-  return logTimeEntry({
-    userId,
-    projectId,
-    stageId: null,
-    entryType: breakDef.entryType,
-    startTime,
-    endTime,
-    notes: breakDef.label,
-  });
-}
 
 /** Upload a photo to Cloud Storage under the project's timesheet-photos folder */
 export async function uploadTimesheetPhoto({ projectCode, userId, localUri }) {

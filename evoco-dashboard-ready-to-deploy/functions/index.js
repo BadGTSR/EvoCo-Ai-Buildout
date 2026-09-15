@@ -14,6 +14,9 @@ const ExcelJS = require("exceljs");
 // the reserved "(default)" database id firebase-admin assumes otherwise.
 const FIRESTORE_DATABASE_ID = "default";
 
+// Entry types that count towards paid hours — work and paid breaks. Unpaid breaks don't.
+const PAYABLE_ENTRY_TYPES = ["work", "paid_break"];
+
 admin.initializeApp();
 const db = getFirestore(admin.app(), FIRESTORE_DATABASE_ID);
 
@@ -60,7 +63,7 @@ async function buildWeekWorkbook(weekStart, weekEnd) {
   for (const [userId, entries] of Object.entries(byUser)) {
     const person = staff.find((s) => s.id === userId) || { displayName: "Unknown" };
     const name = person.displayName || person.email || userId;
-    const workEntries = entries.filter((e) => e.entryType === "work");
+    const workEntries = entries.filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType));
 
     const minutesByProject = {};
     for (const e of workEntries) {

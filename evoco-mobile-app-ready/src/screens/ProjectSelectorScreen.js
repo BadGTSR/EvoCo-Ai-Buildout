@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { colors, spacing } from '../theme';
 import { getMyProjects, getBreakOptions } from '../services/projectService';
-import { logBreak } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProjectSelectorScreen({ navigation, route }) {
@@ -18,14 +17,13 @@ export default function ProjectSelectorScreen({ navigation, route }) {
     });
   }, [user]);
 
-  const handleBreak = (breakKey) => {
-    logBreak({
-      userId: user.uid,
-      projectId: site?.projectId ?? 'evoco-internal',
-      breakKey,
-      startTime: new Date().toISOString(),
-    });
-    navigation.navigate('DailySummary', { site, justLoggedBreak: true });
+  const handleBreak = (breakOption) => {
+    const project = projects.find((p) => p.id === site?.projectId) || {
+      id: site?.projectId ?? 'evoco-internal',
+      projectCode: 'EVOCO',
+      projectName: 'EvoCo Internal',
+    };
+    navigation.navigate('TimeLog', { site, project, breakOption });
   };
 
   const breakOptions = getBreakOptions();
@@ -63,7 +61,7 @@ export default function ProjectSelectorScreen({ navigation, route }) {
               <TouchableOpacity
                 key={b.id}
                 style={styles.breakCard}
-                onPress={() => handleBreak(b.breakKey)}
+                onPress={() => handleBreak(b)}
               >
                 <Text style={styles.breakLabel}>{b.label}</Text>
                 <Text style={styles.breakArrow}>›</Text>

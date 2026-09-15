@@ -1,7 +1,10 @@
+/** Entry types that count towards paid hours — work and paid breaks. Unpaid breaks don't. */
+export const PAYABLE_ENTRY_TYPES = ["work", "paid_break"];
+
 /**
  * Turns { userId: [entries] } into per-staff rows with a per-project hours
  * breakdown and a total, for any date range (a week or an arbitrary export
- * range). Only "work" entries count towards hours — breaks don't.
+ * range). Work and paid breaks count towards hours; unpaid breaks don't.
  */
 export function aggregateHoursByStaffAndProject(entriesByUser, staff, projects) {
   const projMap = {};
@@ -11,7 +14,7 @@ export function aggregateHoursByStaffAndProject(entriesByUser, staff, projects) 
 
   return Object.entries(entriesByUser).map(([userId, entries]) => {
     const person = staff.find((s) => s.id === userId) || { displayName: "Unknown", id: userId };
-    const workEntries = entries.filter((e) => e.entryType === "work");
+    const workEntries = entries.filter((e) => PAYABLE_ENTRY_TYPES.includes(e.entryType));
 
     const minutesByProject = {};
     for (const e of workEntries) {

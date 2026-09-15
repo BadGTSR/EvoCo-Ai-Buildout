@@ -16,23 +16,28 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
-import { logTimeEntry, updateTimeEntry, uploadTimesheetPhoto } from '../services/timesheetService';
+import { logTimeEntry, updateTimeEntry, uploadTimesheetPhoto, getEntriesForDate } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
-import { formatEntryDate, combineDateAndTime } from '../utils/dateUtils';
+import { formatEntryDate, combineDateAndTime, localDateString } from '../utils/dateUtils';
+import { findOverlappingEntry, latestEndTime } from '../utils/timeOverlap';
 
 function formatTime(date) {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function TimeLogScreen({ navigation, route }) {
-  const { site, project, stage, entry } = route.params;
+  const { site, project, stage, entry, breakOption } = route.params;
   const isEditing = !!entry;
+  const isBreak = !!breakOption;
   const { user } = useAuth();
 
   const [entryDate, setEntryDate] = useState(entry ? new Date(entry.startTime) : new Date());
   const [startTime, setStartTime] = useState(entry ? new Date(entry.startTime) : new Date());
   const [endTime, setEndTime] = useState(entry ? new Date(entry.endTime) : null);
-  const [notes, setNotes] = useState(entry?.notes || '');
+  const [durationMinutes, setDurationMinutes] = useState(
+    entry ? Math.round((new Date(entry.endTime) - new Date(entry.startTime)) / 60000) : (breakOption?.defaultMinutes || 30)
+  );
+  const [notes, setNotes] = useState(entry?.notes ?? (isBreak ? breakOption.label : ''));
   const [photos, setPhotos] = useState([]); // newly-added local URIs, uploaded on save
   const [existingPhotoUrls, setExistingPhotoUrls] = useState(entry?.photoUrls || []); // already-uploaded, kept unless removed
   const [saving, setSaving] = useState(false);
@@ -40,8 +45,24 @@ export default function TimeLogScreen({ navigation, route }) {
   const [activePicker, setActivePicker] = useState(null); // null | 'date' | 'start' | 'end'
 
   useEffect(() => {
-    navigation.setOptions({ title: isEditing ? 'Edit Entry' : 'Log Time' });
-  }, [isEditing]);
+    navigation.setOptions({ title: isEditing ? 'Edit Entry' : isBreak ? 'Log Break' : 'Log Time' });
+  }, [isEditing, isBreak]);
+
+  // A break's end time is derived from its length, not picked directly.
+  useEffect(() => {
+    if (isBreak) setEndTime(new Date(startTime.getTime() + durationMinutes * 60000));
+  }, [isBreak, startTime, durationMinutes]);
+
+  // New (non-edit) entries default their start to right after whatever was
+  // logged last today, so times naturally chain instead of overlapping.
+  useEffect(() => {
+    if (isEditing) return;
+    getEntriesForDate(user.uid, localDateString(entryDate)).then((todays) => {
+      const chained = latestEndTime(todays);
+      if (chained) setStartTime(chained);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addPhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -63,6 +84,10 @@ export default function TimeLogScreen({ navigation, route }) {
     setExistingPhotoUrls((prev) => prev.filter((p) => p !== url));
   };
 
+  const adjustDuration = (deltaMinutes) => {
+    setDurationMinutes((m) => Math.max(5, m + deltaMinutes));
+  };
+
   const handleSave = async () => {
     if (!endTime) {
       Alert.alert('End time needed', 'Set an end time before saving this entry.');
@@ -70,6 +95,26 @@ export default function TimeLogScreen({ navigation, route }) {
     }
     setSaving(true);
     try {
+      const finalStart = combineDateAndTime(entryDate, startTime);
+      const finalEnd = combineDateAndTime(entryDate, endTime);
+
+      if (finalEnd <= finalStart) {
+        Alert.alert('Check the times', 'End time must be after the start time.');
+        setSaving(false);
+        return;
+      }
+
+      const daysEntries = await getEntriesForDate(user.uid, localDateString(entryDate));
+      const conflict = findOverlappingEntry(finalStart, finalEnd, daysEntries, entry?.id);
+      if (conflict) {
+        Alert.alert(
+          'Times overlap',
+          `This overlaps with ${formatTime(new Date(conflict.startTime))} – ${formatTime(new Date(conflict.endTime))}. Adjust the times so they don’t double up.`
+        );
+        setSaving(false);
+        return;
+      }
+
       const newPhotoUrls = [];
       for (const localUri of photos) {
         const url = await uploadTimesheetPhoto({
@@ -83,8 +128,8 @@ export default function TimeLogScreen({ navigation, route }) {
 
       if (isEditing) {
         await updateTimeEntry(entry, {
-          startTime: combineDateAndTime(entryDate, startTime).toISOString(),
-          endTime: combineDateAndTime(entryDate, endTime).toISOString(),
+          startTime: finalStart.toISOString(),
+          endTime: finalEnd.toISOString(),
           notes,
           photoUrls,
         });
@@ -93,17 +138,17 @@ export default function TimeLogScreen({ navigation, route }) {
         logTimeEntry({
           userId: user.uid,
           projectId: project.id,
-          stageId: stage.id,
-          entryType: 'work',
-          startTime: combineDateAndTime(entryDate, startTime).toISOString(),
-          endTime: combineDateAndTime(entryDate, endTime).toISOString(),
+          stageId: isBreak ? null : stage.id,
+          entryType: isBreak ? breakOption.entryType : 'work',
+          startTime: finalStart.toISOString(),
+          endTime: finalEnd.toISOString(),
           notes,
           photoUrls,
         });
         navigation.navigate('DailySummary', { site, justLoggedEntry: true });
       }
     } catch (err) {
-      Alert.alert('Couldn\u2019t save', err.message || 'Something went wrong saving this entry.');
+      Alert.alert('Couldn’t save', err.message || 'Something went wrong saving this entry.');
     } finally {
       setSaving(false);
     }
@@ -135,26 +180,47 @@ export default function TimeLogScreen({ navigation, route }) {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.header}>{project.projectCode} · {project.projectName}</Text>
-      <Text style={styles.subHeader}>{stage.stageName}</Text>
+      <Text style={styles.subHeader}>{isBreak ? breakOption.label : stage.stageName}</Text>
 
       <Text style={styles.fieldLabel}>Date</Text>
       <TouchableOpacity style={styles.dateRow} onPress={() => setActivePicker('date')}>
         <Text style={styles.dateValue}>{formatEntryDate(entryDate)}</Text>
       </TouchableOpacity>
 
-      <View style={styles.timeRow}>
-        <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('start')}>
-          <Text style={styles.timeLabel}>Start</Text>
-          <Text style={styles.timeValue}>{formatTime(startTime)}</Text>
-        </TouchableOpacity>
-        <Text style={styles.timeSeparator}>→</Text>
-        <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('end')}>
-          <Text style={styles.timeLabel}>End</Text>
-          <Text style={[styles.timeValue, !endTime && styles.timeValuePlaceholder]}>
-            {endTime ? formatTime(endTime) : 'Tap to set'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {isBreak ? (
+        <View style={styles.timeRow}>
+          <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('start')}>
+            <Text style={styles.timeLabel}>Start</Text>
+            <Text style={styles.timeValue}>{formatTime(startTime)}</Text>
+          </TouchableOpacity>
+          <View style={styles.timeBlock}>
+            <Text style={styles.timeLabel}>Length</Text>
+            <View style={styles.stepperRow}>
+              <TouchableOpacity style={styles.stepperButton} onPress={() => adjustDuration(-5)}>
+                <Text style={styles.stepperButtonText}>−</Text>
+              </TouchableOpacity>
+              <Text style={styles.durationValue}>{durationMinutes} min</Text>
+              <TouchableOpacity style={styles.stepperButton} onPress={() => adjustDuration(5)}>
+                <Text style={styles.stepperButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.timeRow}>
+          <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('start')}>
+            <Text style={styles.timeLabel}>Start</Text>
+            <Text style={styles.timeValue}>{formatTime(startTime)}</Text>
+          </TouchableOpacity>
+          <Text style={styles.timeSeparator}>→</Text>
+          <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('end')}>
+            <Text style={styles.timeLabel}>End</Text>
+            <Text style={[styles.timeValue, !endTime && styles.timeValuePlaceholder]}>
+              {endTime ? formatTime(endTime) : 'Tap to set'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {Platform.OS === 'android' && activePickerConfig && (
         <DateTimePicker
@@ -296,6 +362,18 @@ const styles = StyleSheet.create({
   timeValue: { color: '#fff', fontSize: 20, fontWeight: '700' },
   timeValuePlaceholder: { color: colors.textMuted, fontSize: 14, fontWeight: '400' },
   timeSeparator: { color: colors.textMuted, fontSize: 18, paddingHorizontal: spacing.sm },
+  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepperButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperButtonText: { color: colors.accent, fontSize: 18, fontWeight: '700', lineHeight: 20 },
+  durationValue: { color: '#fff', fontSize: 16, fontWeight: '700', minWidth: 56, textAlign: 'center' },
   fieldLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '600', marginBottom: spacing.xs, textTransform: 'uppercase' },
   notesInput: {
     backgroundColor: colors.surface,
