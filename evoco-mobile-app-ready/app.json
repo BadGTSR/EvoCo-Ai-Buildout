@@ -10,9 +10,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.evoco.evocotimesheets",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "EvoCo needs camera access to scan site QR codes for check-in.",
-        "NSLocationWhenInUseUsageDescription": "EvoCo needs your location to confirm you're on-site."
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -22,11 +20,7 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.evoco.evocotimesheets",
-      "permissions": [
-        "CAMERA",
-        "ACCESS_FINE_LOCATION"
-      ]
+      "package": "com.evoco.evocotimesheets"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -44,7 +38,25 @@
     },
     "plugins": [
       "expo-sqlite",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "EvoCo needs camera access to scan site QR codes for check-in."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "EvoCo needs camera access to take site photos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EvoCo needs your location to confirm you're on-site."
+        }
+      ]
     ]
   }
 }

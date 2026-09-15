@@ -1,0 +1,92 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isManager() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'manager';
+    }
+
+    match /users/{userId} {
+      allow read: if isSelf(userId) || isManager();
+      allow create: if isManager();
+      allow update: if isManager() ||
+        (isSelf(userId) && request.resource.data.role == resource.data.role);
+      allow delete: if isManager();
+    }
+
+    match /projects/{projectId} {
+      allow read: if isSignedIn();
+      allow write: if isManager();
+
+      match /stages/{stageId} {
+        allow read: if isSignedIn();
+        allow write: if isManager();
+      }
+    }
+
+    // Site check-in (QR scan and manual select) happens BEFORE login by
+    // design, so reading site info can't require auth. Site data (address,
+    // GPS, project code) isn't sensitive — anyone standing at the site can
+    // already see it on the posted QR code.
+    match /sites/{siteId} {
+      allow read: if true;
+      allow write: if isManager();
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isManager();
+    }
+
+    match /timesheetEntries/{entryId} {
+      allow read: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow delete: if isManager();
+    }
+
+    match /weeklyApprovals/{approvalId} {
+      allow read: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if isManager();
+    }
+
+    match /backdateRequests/{requestId} {
+      allow read: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isManager();
+    }
+
+    match /weekFinalizations/{weekEndDate} {
+      allow read: if isManager();
+      allow create: if isManager();
+      allow update, delete: if false;
+    }
+
+    match /photos/{photoId} {
+      allow read: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isManager();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

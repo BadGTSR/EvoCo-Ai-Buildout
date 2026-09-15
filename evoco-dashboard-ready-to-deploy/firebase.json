@@ -15,5 +15,9 @@
       "codebase": "default",
       "runtime": "nodejs20"
     }
-  ]
+  ],
+  "firestore": {
+    "database": "default",
+    "rules": "firestore.rules"
+  }
 }
