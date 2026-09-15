@@ -10,6 +10,8 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -32,9 +34,8 @@ export default function TimeLogScreen({ navigation, route }) {
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState([]); // local URIs, uploaded on save
   const [saving, setSaving] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showStartPicker, setShowStartPicker] = useState(false);
-  const [showEndPicker, setShowEndPicker] = useState(false);
+  // Which field's picker is open — only ever one at a time.
+  const [activePicker, setActivePicker] = useState(null); // null | 'date' | 'start' | 'end'
 
   const addPhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -88,88 +89,91 @@ export default function TimeLogScreen({ navigation, route }) {
     }
   };
 
-  const onChangeDate = (event, selected) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    if (event.type !== 'dismissed' && selected) setEntryDate(selected);
+  // Android's dialog closes itself; iOS's spinner stays open until "Done".
+  const onChangeActivePicker = (event, selected) => {
+    if (Platform.OS === 'android') setActivePicker(null);
+    if (event.type === 'dismissed' || !selected) return;
+    if (activePicker === 'date') setEntryDate(selected);
+    else if (activePicker === 'start') setStartTime(selected);
+    else if (activePicker === 'end') setEndTime(selected);
   };
 
-  const onChangeStart = (event, selected) => {
-    setShowStartPicker(Platform.OS === 'ios');
-    if (event.type !== 'dismissed' && selected) setStartTime(selected);
-  };
-
-  const onChangeEnd = (event, selected) => {
-    setShowEndPicker(Platform.OS === 'ios');
-    if (event.type !== 'dismissed' && selected) setEndTime(selected);
-  };
+  const activePickerConfig =
+    activePicker === 'date'
+      ? { value: entryDate, mode: 'date', maximumDate: new Date(), title: 'Date' }
+      : activePicker === 'start'
+        ? { value: startTime, mode: 'time', title: 'Start Time' }
+        : activePicker === 'end'
+          ? { value: endTime || new Date(), mode: 'time', title: 'End Time' }
+          : null;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>{project.projectCode} · {stage.stageName}</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <Text style={styles.header}>{project.projectCode} · {project.projectName}</Text>
+      <Text style={styles.subHeader}>{stage.stageName}</Text>
 
       <Text style={styles.fieldLabel}>Date</Text>
-      <TouchableOpacity style={styles.dateRow} onPress={() => setShowDatePicker(true)}>
+      <TouchableOpacity style={styles.dateRow} onPress={() => setActivePicker('date')}>
         <Text style={styles.dateValue}>{formatEntryDate(entryDate)}</Text>
       </TouchableOpacity>
-      {showDatePicker && (
-        <>
-          <DateTimePicker
-            value={entryDate}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            maximumDate={new Date()}
-            onChange={onChangeDate}
-          />
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity style={styles.pickerDoneButton} onPress={() => setShowDatePicker(false)}>
-              <Text style={styles.pickerDoneText}>Done</Text>
-            </TouchableOpacity>
-          )}
-        </>
-      )}
 
       <View style={styles.timeRow}>
-        <TouchableOpacity style={styles.timeBlock} onPress={() => setShowStartPicker(true)}>
+        <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('start')}>
           <Text style={styles.timeLabel}>Start</Text>
           <Text style={styles.timeValue}>{formatTime(startTime)}</Text>
         </TouchableOpacity>
         <Text style={styles.timeSeparator}>→</Text>
-        <TouchableOpacity style={styles.timeBlock} onPress={() => setShowEndPicker(true)}>
+        <TouchableOpacity style={styles.timeBlock} onPress={() => setActivePicker('end')}>
           <Text style={styles.timeLabel}>End</Text>
           <Text style={[styles.timeValue, !endTime && styles.timeValuePlaceholder]}>
             {endTime ? formatTime(endTime) : 'Tap to set'}
           </Text>
         </TouchableOpacity>
       </View>
-      {showStartPicker && (
-        <>
-          <DateTimePicker
-            value={startTime}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={onChangeStart}
-          />
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity style={styles.pickerDoneButton} onPress={() => setShowStartPicker(false)}>
-              <Text style={styles.pickerDoneText}>Done</Text>
-            </TouchableOpacity>
-          )}
-        </>
+
+      {Platform.OS === 'android' && activePickerConfig && (
+        <DateTimePicker
+          value={activePickerConfig.value}
+          mode={activePickerConfig.mode}
+          display="default"
+          maximumDate={activePickerConfig.maximumDate}
+          onChange={onChangeActivePicker}
+        />
       )}
-      {showEndPicker && (
-        <>
-          <DateTimePicker
-            value={endTime || new Date()}
-            mode="time"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={onChangeEnd}
-          />
-          {Platform.OS === 'ios' && (
-            <TouchableOpacity style={styles.pickerDoneButton} onPress={() => setShowEndPicker(false)}>
-              <Text style={styles.pickerDoneText}>Done</Text>
-            </TouchableOpacity>
-          )}
-        </>
+
+      {Platform.OS === 'ios' && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={activePicker !== null}
+          onRequestClose={() => setActivePicker(null)}
+        >
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              {activePickerConfig && (
+                <>
+                  <Text style={styles.modalTitle}>{activePickerConfig.title}</Text>
+                  <DateTimePicker
+                    value={activePickerConfig.value}
+                    mode={activePickerConfig.mode}
+                    display="spinner"
+                    maximumDate={activePickerConfig.maximumDate}
+                    onChange={onChangeActivePicker}
+                    textColor="#ffffff"
+                  />
+                </>
+              )}
+              <TouchableOpacity style={styles.modalDoneButton} onPress={() => setActivePicker(null)}>
+                <Text style={styles.modalDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       )}
 
       <Text style={styles.fieldLabel}>Notes (optional)</Text>
@@ -208,14 +212,16 @@ export default function TimeLogScreen({ navigation, route }) {
           <Text style={styles.saveButtonText}>Save Entry</Text>
         )}
       </TouchableOpacity>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.lg, paddingBottom: spacing.xl },
-  header: { color: colors.accent, fontSize: 15, fontWeight: '700', marginBottom: spacing.lg },
+  header: { color: colors.accent, fontSize: 15, fontWeight: '700' },
+  subHeader: { color: '#fff', fontSize: 13, fontWeight: '500', marginBottom: spacing.lg },
   dateRow: {
     backgroundColor: colors.surface,
     borderRadius: 10,
@@ -226,8 +232,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dateValue: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  pickerDoneButton: { alignSelf: 'flex-end', paddingVertical: spacing.sm, paddingHorizontal: spacing.md, marginBottom: spacing.sm },
-  pickerDoneText: { color: colors.accent, fontSize: 14, fontWeight: '700' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    width: '85%',
+    alignItems: 'center',
+  },
+  modalTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  modalDoneButton: {
+    backgroundColor: colors.accent,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    width: '100%',
+    marginTop: spacing.md,
+  },
+  modalDoneText: { color: '#141414', fontWeight: '700', fontSize: 15 },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
