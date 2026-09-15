@@ -1,4 +1,10 @@
-import { localDateString, formatEntryDate, combineDateAndTime, defaultStartTimeForDate } from './dateUtils';
+import {
+  localDateString,
+  formatEntryDate,
+  combineDateAndTime,
+  defaultStartTimeForDate,
+  earliestAllowedStartForDate,
+} from './dateUtils';
 
 describe('localDateString', () => {
   it('formats a local date as YYYY-MM-DD using local, not UTC, components', () => {
@@ -61,7 +67,7 @@ describe('combineDateAndTime', () => {
 });
 
 describe('defaultStartTimeForDate', () => {
-  it('reuses the latest end time when staying on the same date and resets on a new date', () => {
+  it('reuses the latest end time when staying on the same date and defaults to 6am on a new date', () => {
     const entries = [
       { startTime: '2026-09-15T08:00:00', endTime: '2026-09-15T12:00:00' },
       { startTime: '2026-09-14T09:00:00', endTime: '2026-09-14T10:30:00' },
@@ -74,7 +80,24 @@ describe('defaultStartTimeForDate', () => {
 
     const differentDay = defaultStartTimeForDate(entries, new Date(2026, 8, 16));
     expect(localDateString(differentDay)).toBe('2026-09-16');
-    expect(differentDay.getHours()).toBe(0);
+    expect(differentDay.getHours()).toBe(6);
     expect(differentDay.getMinutes()).toBe(0);
+  });
+});
+
+describe('earliestAllowedStartForDate', () => {
+  it('returns null when nothing has been logged that date yet, leaving the wheel unrestricted', () => {
+    const entries = [{ startTime: '2026-09-14T09:00:00', endTime: '2026-09-14T10:30:00' }];
+    expect(earliestAllowedStartForDate(entries, new Date(2026, 8, 15))).toBeNull();
+  });
+
+  it('returns the latest end time already logged that date', () => {
+    const entries = [
+      { startTime: '2026-09-15T06:00:00', endTime: '2026-09-15T08:00:00' },
+      { startTime: '2026-09-15T08:00:00', endTime: '2026-09-15T12:00:00' },
+    ];
+    const earliest = earliestAllowedStartForDate(entries, new Date(2026, 8, 15));
+    expect(earliest.getHours()).toBe(12);
+    expect(earliest.getMinutes()).toBe(0);
   });
 });

@@ -7,8 +7,6 @@ import { useAuth } from '../context/AuthContext';
 
 const STATUS_STYLES = {
   pending: { label: 'Pending', color: colors.accent },
-  approved: { label: 'Approved', color: colors.success },
-  rejected: { label: 'Rejected', color: colors.error },
 };
 
 export default function MyRequestsScreen() {
@@ -22,7 +20,9 @@ export default function MyRequestsScreen() {
       setLoading(true);
       getMyBackdateRequests(user.uid).then((data) => {
         if (active) {
-          setRequests(data);
+          // Once a manager actions a request on the dashboard it's no longer
+          // this screen's concern — only pending ones need the worker's eyes.
+          setRequests(data.filter((r) => r.status === 'pending'));
           setLoading(false);
         }
       });
@@ -42,7 +42,7 @@ export default function MyRequestsScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>My Backdate Requests</Text>
+      <Text style={styles.header}>Pending Backdate Requests</Text>
       <FlatList
         data={requests}
         keyExtractor={(item, idx) => item.id ?? String(idx)}
@@ -63,7 +63,7 @@ export default function MyRequestsScreen() {
           );
         }}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>No backdate requests yet.</Text>
+          <Text style={styles.emptyText}>No pending backdate requests.</Text>
         }
       />
     </View>

@@ -18,7 +18,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
 import { logTimeEntry, updateTimeEntry, uploadTimesheetPhoto, getEntriesForDate } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
-import { formatEntryDate, combineDateAndTime, localDateString, defaultStartTimeForDate } from '../utils/dateUtils';
+import {
+  formatEntryDate,
+  combineDateAndTime,
+  localDateString,
+  defaultStartTimeForDate,
+  earliestAllowedStartForDate,
+} from '../utils/dateUtils';
 import { findOverlappingEntry } from '../utils/timeOverlap';
 
 function formatTime(date) {
@@ -43,6 +49,9 @@ export default function TimeLogScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   // Which field's picker is open — only ever one at a time.
   const [activePicker, setActivePicker] = useState(null); // null | 'date' | 'start' | 'end'
+  // Earliest start time allowed for the selected date (the latest end time
+  // already logged that day), or null when there's nothing to chain from yet.
+  const [minStartTime, setMinStartTime] = useState(null);
   // React's `disabled={saving}` can't block a second tap that lands before
   // the re-render commits — this ref is checked synchronously so a fast
   // double-tap can't fire handleSave twice.
@@ -58,12 +67,13 @@ export default function TimeLogScreen({ navigation, route }) {
   }, [isBreak, startTime, durationMinutes]);
 
   // New (non-edit) entries default their start to right after the last logged
-  // time on the selected date, and reset to 00:00 when the day changes.
+  // time on the selected date, or 6am if nothing's logged there yet.
   useEffect(() => {
     if (isEditing || !user?.uid) return;
     getEntriesForDate(user.uid, localDateString(entryDate)).then((todays) => {
       const defaultStart = defaultStartTimeForDate(todays, entryDate);
       setStartTime(defaultStart);
+      setMinStartTime(earliestAllowedStartForDate(todays, entryDate));
       setEndTime(null);
       setDurationMinutes(breakOption?.defaultMinutes || 30);
     });
@@ -166,17 +176,20 @@ export default function TimeLogScreen({ navigation, route }) {
     if (Platform.OS === 'android') setActivePicker(null);
     if (event.type === 'dismissed' || !selected) return;
     if (activePicker === 'date') setEntryDate(selected);
-    else if (activePicker === 'start') setStartTime(selected);
-    else if (activePicker === 'end') setEndTime(selected);
+    else if (activePicker === 'start') {
+      // Android's time picker can't enforce minimumDate natively, so clamp
+      // here too — the iOS spinner already stops itself at minStartTime.
+      setStartTime(minStartTime && selected < minStartTime ? minStartTime : selected);
+    } else if (activePicker === 'end') setEndTime(selected);
   };
 
   const activePickerConfig =
     activePicker === 'date'
       ? { value: entryDate, mode: 'date', maximumDate: new Date(), title: 'Date' }
       : activePicker === 'start'
-        ? { value: startTime, mode: 'time', title: 'Start Time' }
+        ? { value: startTime, mode: 'time', title: 'Start Time', minimumDate: minStartTime || undefined, minuteInterval: 10 }
         : activePicker === 'end'
-          ? { value: endTime || new Date(), mode: 'time', title: 'End Time' }
+          ? { value: endTime || new Date(), mode: 'time', title: 'End Time', minuteInterval: 10 }
           : null;
 
   return (
@@ -235,6 +248,8 @@ export default function TimeLogScreen({ navigation, route }) {
           mode={activePickerConfig.mode}
           display="default"
           maximumDate={activePickerConfig.maximumDate}
+          minimumDate={activePickerConfig.minimumDate}
+          minuteInterval={activePickerConfig.minuteInterval}
           onChange={onChangeActivePicker}
         />
       )}
@@ -256,6 +271,8 @@ export default function TimeLogScreen({ navigation, route }) {
                     mode={activePickerConfig.mode}
                     display="spinner"
                     maximumDate={activePickerConfig.maximumDate}
+                    minimumDate={activePickerConfig.minimumDate}
+                    minuteInterval={activePickerConfig.minuteInterval}
                     onChange={onChangeActivePicker}
                     textColor="#ffffff"
                   />
