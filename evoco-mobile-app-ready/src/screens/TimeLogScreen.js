@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,10 @@ export default function TimeLogScreen({ navigation, route }) {
   const [saving, setSaving] = useState(false);
   // Which field's picker is open — only ever one at a time.
   const [activePicker, setActivePicker] = useState(null); // null | 'date' | 'start' | 'end'
+  // React's `disabled={saving}` can't block a second tap that lands before
+  // the re-render commits — this ref is checked synchronously so a fast
+  // double-tap can't fire handleSave twice.
+  const isSavingRef = useRef(false);
 
   useEffect(() => {
     navigation.setOptions({ title: isEditing ? 'Edit Entry' : isBreak ? 'Log Break' : 'Log Time' });
@@ -89,8 +93,11 @@ export default function TimeLogScreen({ navigation, route }) {
   };
 
   const handleSave = async () => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
     if (!endTime) {
       Alert.alert('End time needed', 'Set an end time before saving this entry.');
+      isSavingRef.current = false;
       return;
     }
     setSaving(true);
@@ -100,7 +107,6 @@ export default function TimeLogScreen({ navigation, route }) {
 
       if (finalEnd <= finalStart) {
         Alert.alert('Check the times', 'End time must be after the start time.');
-        setSaving(false);
         return;
       }
 
@@ -111,7 +117,6 @@ export default function TimeLogScreen({ navigation, route }) {
           'Times overlap',
           `This overlaps with ${formatTime(new Date(conflict.startTime))} – ${formatTime(new Date(conflict.endTime))}. Adjust the times so they don’t double up.`
         );
-        setSaving(false);
         return;
       }
 
@@ -151,6 +156,7 @@ export default function TimeLogScreen({ navigation, route }) {
       Alert.alert('Couldn’t save', err.message || 'Something went wrong saving this entry.');
     } finally {
       setSaving(false);
+      isSavingRef.current = false;
     }
   };
 

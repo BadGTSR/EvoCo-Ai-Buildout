@@ -11,6 +11,7 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Alert } from 'react-native';
 import { db, storage } from './firebase';
 import { queueWrite, getPendingWrites, updatePendingWrite } from './offlineSync';
 import { localDateString } from '../utils/dateUtils';
@@ -63,6 +64,14 @@ export function logTimeEntry({
   const entryDate = localDateString(new Date(startTime));
   const isBackdated = entryDate !== today;
   const durationMinutes = Math.round((new Date(endTime) - new Date(startTime)) / 60000);
+
+  // TEMPORARY diagnostic — remove once the backdate-mislabeling bug is found.
+  if (isBackdated) {
+    Alert.alert(
+      'Debug: flagged as backdated',
+      `today = ${today}\nentryDate = ${entryDate}\nstartTime (raw) = ${startTime}\nnew Date(startTime) = ${new Date(startTime).toString()}`
+    );
+  }
 
   const entry = {
     userId,
