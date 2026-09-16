@@ -68,13 +68,18 @@ let isSyncing = false;
 
 export async function trySync() {
   if (isSyncing) return;
-
-  const netState = await NetInfo.fetch();
-  if (!netState.isConnected) return;
-
+  // Claimed synchronously, before any `await` — logTimeEntry queues a
+  // backdateRequest and a timesheetEntry back to back, and each queueWrite
+  // fires trySync(). If the isSyncing check and claim straddled an await
+  // (as it did previously, around the NetInfo call below), both calls could
+  // see isSyncing as false and each sync the same unsynced rows, doubling
+  // every backdated save into Firestore.
   isSyncing = true;
 
   try {
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) return;
+
     const pending = database.getAllSync(
       `SELECT * FROM pending_writes WHERE synced = 0 ORDER BY id ASC;`
     );
