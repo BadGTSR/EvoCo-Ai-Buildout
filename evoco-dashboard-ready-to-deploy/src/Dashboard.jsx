@@ -513,7 +513,7 @@ function Approvals() {
 
       {selected && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setSelected(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 460, maxHeight: "85vh", padding: 26, display: "flex", flexDirection: "column" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 480, maxHeight: "85vh", padding: 26, display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
               <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>{selected.name} — {selected.totalHours.toFixed(1)}h</div>
               <X size={18} color={C.grey} style={{ cursor: "pointer" }} onClick={() => setSelected(null)} />
@@ -525,7 +525,7 @@ function Approvals() {
                 </span>
               ))}
             </div>
-            <div style={{ overflowY: "auto", minHeight: 0 }}>
+            <div style={{ overflowY: "auto", minHeight: 0, scrollbarGutter: "stable", paddingRight: 14, marginRight: -14 }}>
               {selectedEntries.length === 0 ? (
                 <div style={{ color: C.greyDim, fontSize: 13, padding: "10px 0" }}>No entries this week.</div>
               ) : (
