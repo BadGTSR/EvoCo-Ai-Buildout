@@ -331,6 +331,11 @@ function Approvals() {
   const [finalization, setFinalization] = useState(null);
   const [finalizing, setFinalizing] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [projectsById, setProjectsById] = useState({});
+  // Stages are a subcollection per project, so this fills in lazily —
+  // per project, the first time its entries show up in the detail modal —
+  // rather than fetching every project's stages up front.
+  const [stagesById, setStagesById] = useState({});
 
   const week = useMemo(
     () => getCurrentWeekBounds(new Date(Date.now() + weekOffset * 7 * 86400000)),
@@ -351,6 +356,7 @@ function Approvals() {
       api.getWeekFinalization(week.end),
     ]);
     setFinalization(weekFinalization);
+    setProjectsById(Object.fromEntries(projects.map((p) => [p.id, p])));
 
     const aggregated = aggregateHoursByStaffAndProject(byUser, staff, projects);
     const built = aggregated.map((row) => ({
@@ -395,11 +401,22 @@ function Approvals() {
     setSelected(null);
   };
 
-  const openDetail = (row) => {
+  const openDetail = async (row) => {
     setSelected(row);
     setSelectedEntries(row.entries.slice().sort((a, b) => new Date(a.startTime) - new Date(b.startTime)));
     setQueryMode(false);
     setQueryNote("");
+
+    const projectIds = [...new Set(row.entries.map((e) => e.projectId).filter((id) => id && !stagesById[id]))];
+    if (projectIds.length === 0) return;
+    const stageLists = await Promise.all(projectIds.map((id) => api.getStagesForProject(id)));
+    setStagesById((prev) => {
+      const next = { ...prev };
+      projectIds.forEach((id, i) => {
+        next[id] = Object.fromEntries(stageLists[i].map((s) => [s.id, s]));
+      });
+      return next;
+    });
   };
 
   const allApproved = rows.length > 0 && rows.every((r) => r.status === "approved");
@@ -496,7 +513,7 @@ function Approvals() {
 
       {selected && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setSelected(null)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 460, padding: 26 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 460, maxHeight: "85vh", padding: 26, display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
               <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>{selected.name} — {selected.totalHours.toFixed(1)}h</div>
               <X size={18} color={C.grey} style={{ cursor: "pointer" }} onClick={() => setSelected(null)} />
@@ -508,17 +525,30 @@ function Approvals() {
                 </span>
               ))}
             </div>
-            {selectedEntries.length === 0 ? (
-              <div style={{ color: C.greyDim, fontSize: 13, padding: "10px 0" }}>No entries this week.</div>
-            ) : (
-              selectedEntries.map((e, i) => (
-                <div key={e.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < selectedEntries.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 13, color: C.grey }}>
-                  <span>{DAY_LABELS[new Date(e.startTime).getDay()]}</span>
-                  <span style={{ color: C.white }}>{e.entryType === "work" ? "Work" : e.entryType.replace("_", " ")}</span>
-                  <span style={{ color: C.amber, fontWeight: 600 }}>{((e.durationMinutes || 0) / 60).toFixed(1)}h</span>
-                </div>
-              ))
-            )}
+            <div style={{ overflowY: "auto", minHeight: 0 }}>
+              {selectedEntries.length === 0 ? (
+                <div style={{ color: C.greyDim, fontSize: 13, padding: "10px 0" }}>No entries this week.</div>
+              ) : (
+                selectedEntries.map((e, i) => {
+                  const project = projectsById[e.projectId];
+                  const stage = stagesById[e.projectId]?.[e.stageId];
+                  const projectLabel = project ? [project.projectCode, project.projectName].filter(Boolean).join(" — ") : null;
+                  const detail =
+                    e.entryType === "work"
+                      ? [projectLabel, stage?.stageName].filter(Boolean).join(" · ") || "—"
+                      : e.entryType.replace("_", " ");
+                  return (
+                    <div key={e.id} style={{ padding: "10px 0", borderBottom: i < selectedEntries.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 13 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: C.grey }}>{DAY_LABELS[new Date(e.startTime).getDay()]}</span>
+                        <span style={{ color: C.amber, fontWeight: 600 }}>{((e.durationMinutes || 0) / 60).toFixed(1)}h</span>
+                      </div>
+                      <div style={{ color: C.white, fontSize: 12.5, marginTop: 2 }}>{detail}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
             {locked ? null : queryMode ? (
               <>
                 <textarea
