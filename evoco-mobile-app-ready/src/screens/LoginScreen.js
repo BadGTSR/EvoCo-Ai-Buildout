@@ -45,7 +45,7 @@ export default function LoginScreen() {
     >
       <View style={styles.logoWrap}>
         <Text style={styles.logoText}>EVOCO</Text>
-        <Text style={styles.tagline}>Timesheet & Site Attendance</Text>
+        <Text style={styles.tagline}>Timesheets</Text>
       </View>
 
       <View style={styles.form}>

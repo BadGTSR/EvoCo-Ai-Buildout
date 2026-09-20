@@ -18,9 +18,8 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function DailySummaryScreen({ navigation, route }) {
-  const { user, activeSite } = useAuth();
-  const site = route.params?.site || activeSite;
+export default function DailySummaryScreen({ navigation }) {
+  const { user } = useAuth();
   const [entries, setEntries] = useState([]);
   const [projectsById, setProjectsById] = useState({});
   const [stagesById, setStagesById] = useState({});
@@ -70,13 +69,13 @@ export default function DailySummaryScreen({ navigation, route }) {
     if (item.entryType === 'work') {
       const stage = stagesById[item.stageId];
       if (!stage) return;
-      navigation.navigate('TimeLog', { site, project, stage, entry: item });
+      navigation.navigate('TimeLog', { project, stage, entry: item });
       return;
     }
 
     const breakOption = getBreakOptionForEntryType(item.entryType);
     if (!breakOption) return;
-    navigation.navigate('TimeLog', { site, project, breakOption, entry: item });
+    navigation.navigate('TimeLog', { project, breakOption, entry: item });
   };
 
   return (
@@ -149,7 +148,7 @@ export default function DailySummaryScreen({ navigation, route }) {
 
       <TouchableOpacity
         style={styles.addButton}
-        onPress={() => navigation.navigate('ProjectSelector', { site })}
+        onPress={() => navigation.navigate('ProjectSelector')}
       >
         <Text style={styles.addButtonText}>+ Log Time</Text>
       </TouchableOpacity>

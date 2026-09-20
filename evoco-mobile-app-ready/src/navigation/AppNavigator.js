@@ -1,7 +1,9 @@
 // EvoCo Timesheet App — Navigation Stack
-// Flow: QR scan → H&S questionnaire → check-in confirmed → login →
-//       today's entries (home) → project → stage → time log → back to
-//       today's entries. "My Requests" is reachable from there at any point.
+// Flow: login → today's entries (home) → project → stage → time log → back
+// to today's entries. "My Requests" is reachable from there at any point.
+//
+// Site check-in (QR scan, H&S questionnaire, geofenced attendance) has been
+// removed for now — it'll come back as its own dedicated H&S feature later.
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -11,10 +13,6 @@ import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
 
-import QrScanScreen from '../screens/QrScanScreen';
-import ManualSiteSelectScreen from '../screens/ManualSiteSelectScreen';
-import HsQuestionnaireScreen from '../screens/HsQuestionnaireScreen';
-import CheckInConfirmedScreen from '../screens/CheckInConfirmedScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ProjectSelectorScreen from '../screens/ProjectSelectorScreen';
 import StageSelectorScreen from '../screens/StageSelectorScreen';
@@ -47,17 +45,10 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={screenOptions}>
         {!user ? (
-          // Pre-auth flow: on-site check-in doesn't require an app login
-          <>
-            <Stack.Screen name="QrScan" component={QrScanScreen} options={{ title: 'Scan Site QR' }} />
-            <Stack.Screen name="ManualSiteSelect" component={ManualSiteSelectScreen} options={{ title: 'Select Site' }} />
-            <Stack.Screen name="HsQuestionnaire" component={HsQuestionnaireScreen} options={{ title: 'Site Check-In' }} />
-            <Stack.Screen name="CheckInConfirmed" component={CheckInConfirmedScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="AppLogin" component={LoginScreen} options={{ headerShown: false }} />
-          </>
+          <Stack.Screen name="AppLogin" component={LoginScreen} options={{ headerShown: false }} />
         ) : (
-          // Authenticated flow: today's entries is home; logging time against
-          // projects/stages always cycles back to it.
+          // Today's entries is home; logging time against projects/stages
+          // always cycles back to it.
           <>
             <Stack.Screen name="DailySummary" component={DailySummaryScreen} options={{ title: "Today's Entries", headerBackVisible: false }} />
             <Stack.Screen name="ProjectSelector" component={ProjectSelectorScreen} options={{ title: 'Select Project' }} />

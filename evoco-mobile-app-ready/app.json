@@ -40,21 +40,9 @@
       "expo-sqlite",
       "@react-native-community/datetimepicker",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "EvoCo needs camera access to scan site QR codes for check-in."
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "cameraPermission": "EvoCo needs camera access to take site photos."
-        }
-      ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "EvoCo needs your location to confirm you're on-site."
         }
       ]
     ]

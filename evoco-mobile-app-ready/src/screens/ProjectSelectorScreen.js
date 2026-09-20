@@ -4,8 +4,9 @@ import { colors, spacing } from '../theme';
 import { getMyProjects, getBreakOptions } from '../services/projectService';
 import { useAuth } from '../context/AuthContext';
 
-export default function ProjectSelectorScreen({ navigation, route }) {
-  const { site } = route.params || {};
+const EVOCO_INTERNAL_PROJECT = { id: 'evoco-internal', projectCode: 'EVOCO', projectName: 'EvoCo Internal' };
+
+export default function ProjectSelectorScreen({ navigation }) {
   const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,12 +19,7 @@ export default function ProjectSelectorScreen({ navigation, route }) {
   }, [user]);
 
   const handleBreak = (breakOption) => {
-    const project = projects.find((p) => p.id === site?.projectId) || {
-      id: site?.projectId ?? 'evoco-internal',
-      projectCode: 'EVOCO',
-      projectName: 'EvoCo Internal',
-    };
-    navigation.navigate('TimeLog', { site, project, breakOption });
+    navigation.navigate('TimeLog', { project: EVOCO_INTERNAL_PROJECT, breakOption });
   };
 
   const breakOptions = getBreakOptions();
@@ -47,7 +43,7 @@ export default function ProjectSelectorScreen({ navigation, route }) {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={styles.projectCard}
-            onPress={() => navigation.navigate('StageSelector', { site, project: item })}
+            onPress={() => navigation.navigate('StageSelector', { project: item })}
           >
             <Text style={styles.projectCode}>{item.projectCode}</Text>
             <Text style={styles.projectName}>{item.projectName}</Text>

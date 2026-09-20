@@ -1,7 +1,7 @@
 // EvoCo Timesheet App — Offline Sync Service
 //
 // Why this exists: workers are on construction sites, often with no signal.
-// Every write (timesheet entry, attendance check-in, photo) is saved to a
+// Every write (timesheet entry, backdate request, photo) is saved to a
 // local SQLite queue FIRST, then pushed to Firestore in the background
 // whenever a connection is available. The UI never waits on network.
 
@@ -35,7 +35,7 @@ export function generateClientId() {
 
 /**
  * Queue a write locally. Call this instead of writing to Firestore directly
- * from any screen (timesheet entry, attendance, backdate request).
+ * from any screen (timesheet entry, backdate request).
  * Returns immediately — the UI can show "Saved" right away.
  *
  * Every record gets a clientId that travels with it into Firestore. Without

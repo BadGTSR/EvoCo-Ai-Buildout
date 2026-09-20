@@ -32,7 +32,7 @@ function formatTime(date) {
 }
 
 export default function TimeLogScreen({ navigation, route }) {
-  const { site, project, stage, entry, breakOption } = route.params;
+  const { project, stage, entry, breakOption } = route.params;
   const isEditing = !!entry;
   const isBreak = !!breakOption;
   const { user } = useAuth();
@@ -172,7 +172,7 @@ export default function TimeLogScreen({ navigation, route }) {
           notes,
           photoUrls,
         });
-        navigation.navigate('DailySummary', { site, justLoggedEntry: true });
+        navigation.navigate('DailySummary', { justLoggedEntry: true });
       }
     } catch (err) {
       Alert.alert('Couldn’t save', err.message || 'Something went wrong saving this entry.');

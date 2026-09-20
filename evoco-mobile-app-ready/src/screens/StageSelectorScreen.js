@@ -4,7 +4,7 @@ import { colors, spacing } from '../theme';
 import { getStagesForProject } from '../services/projectService';
 
 export default function StageSelectorScreen({ navigation, route }) {
-  const { site, project } = route.params;
+  const { project } = route.params;
   const [stages, setStages] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +35,7 @@ export default function StageSelectorScreen({ navigation, route }) {
         renderItem={({ item }) => (
           <TouchableOpacity
             style={[styles.stageCard, item.isVariation && styles.stageCardVariation]}
-            onPress={() => navigation.navigate('TimeLog', { site, project, stage: item })}
+            onPress={() => navigation.navigate('TimeLog', { project, stage: item })}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.stageCode}>{item.stageCode}</Text>
