@@ -591,13 +591,16 @@ function ProjectsAndVariations() {
   const [stagesByProject, setStagesByProject] = useState({});
   const [expanded, setExpanded] = useState(null);
   const [showAdd, setShowAdd] = useState(null); // holds project id
+  const [showAddStage, setShowAddStage] = useState(null); // holds project id
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ description: "", value: "", status: "pending" });
+  const [stageForm, setStageForm] = useState({ stageCode: "", stageName: "" });
   const [saving, setSaving] = useState(false);
+  const [savingStage, setSavingStage] = useState(false);
 
   const loadStages = useCallback(async (projectId) => {
     const stages = await api.getStagesForProject(projectId);
-    setStagesByProject((prev) => ({ ...prev, [projectId]: stages.filter((s) => s.isVariation) }));
+    setStagesByProject((prev) => ({ ...prev, [projectId]: stages }));
   }, []);
 
   useEffect(() => {
@@ -627,14 +630,27 @@ function ProjectsAndVariations() {
     setShowAdd(null);
   };
 
+  const submitStage = async () => {
+    if (!stageForm.stageCode || !stageForm.stageName) return;
+    setSavingStage(true);
+    await api.addStage(showAddStage, stageForm);
+    await loadStages(showAddStage);
+    setStageForm({ stageCode: "", stageName: "" });
+    setSavingStage(false);
+    setShowAddStage(null);
+  };
+
   if (loading) return <LoadingBlock />;
 
   const showAddProject = projects.find((p) => p.id === showAdd);
+  const showAddStageProject = projects.find((p) => p.id === showAddStage);
 
   return (
     <div style={{ padding: 32 }}>
       {projects.map((p) => {
-        const variations = stagesByProject[p.id] || [];
+        const allStages = stagesByProject[p.id] || [];
+        const stages = allStages.filter((s) => !s.isVariation);
+        const variations = allStages.filter((s) => s.isVariation);
         return (
           <div key={p.id} style={{ background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, marginBottom: 14, overflow: "hidden" }}>
             <div
@@ -649,6 +665,20 @@ function ProjectsAndVariations() {
             </div>
             {expanded === p.id && (
               <div style={{ padding: "0 18px 18px" }}>
+                <div style={{ color: C.grey, fontSize: 11, letterSpacing: 1, marginBottom: 10 }}>STAGES</div>
+                {stages.length === 0 && <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 12 }}>No stages yet.</div>}
+                {stages.map((s) => (
+                  <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCardAlt, borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
+                    <div style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>{s.stageCode} — {s.stageName}</div>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setShowAddStage(p.id)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, color: C.amber, background: "none", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 0 16px" }}
+                >
+                  <Plus size={15} /> Add Stage
+                </button>
+
                 <div style={{ color: C.grey, fontSize: 11, letterSpacing: 1, marginBottom: 10 }}>VARIATIONS</div>
                 {variations.length === 0 && <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 12 }}>No variations yet.</div>}
                 {variations.map((v) => (
@@ -710,6 +740,38 @@ function ProjectsAndVariations() {
                 {saving ? "Saving…" : "Save Variation"}
               </button>
               <button onClick={() => setShowAdd(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddStage && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAddStage(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 420, padding: 26 }}>
+            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>New Stage — {showAddStageProject?.projectCode}</div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Stage Code</div>
+              <input
+                value={stageForm.stageCode}
+                onChange={(e) => setStageForm({ ...stageForm, stageCode: e.target.value })}
+                placeholder="e.g. 10"
+                style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Stage Name</div>
+              <input
+                value={stageForm.stageName}
+                onChange={(e) => setStageForm({ ...stageForm, stageName: e.target.value })}
+                placeholder="e.g. Roofing"
+                style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={submitStage} disabled={savingStage} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: savingStage ? 0.6 : 1 }}>
+                {savingStage ? "Saving…" : "Save Stage"}
+              </button>
+              <button onClick={() => setShowAddStage(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         </div>

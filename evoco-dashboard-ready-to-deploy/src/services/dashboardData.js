@@ -30,6 +30,16 @@ export async function getStagesForProject(projectId) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+/** Add a regular (non-variation) stage to a project's stage list. */
+export async function addStage(projectId, { stageCode, stageName }) {
+  return addDoc(collection(db, "projects", projectId, "stages"), {
+    stageCode,
+    stageName,
+    isVariation: false,
+    createdAt: serverTimestamp(),
+  });
+}
+
 /** Add a variation (change order) to a project's stage list. Visible to workers once approved. */
 export async function addVariation(projectId, { description, value, status }) {
   const existingStages = await getStagesForProject(projectId);
