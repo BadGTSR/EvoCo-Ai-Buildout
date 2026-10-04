@@ -136,17 +136,23 @@ function Overview() {
   const [dailyRows, setDailyRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [reviewing, setReviewing] = useState(null);
+  const [staffList, setStaffList] = useState([]);
+  const [projectList, setProjectList] = useState([]);
 
   const week = useMemo(() => getCurrentWeekBounds(), []);
   const weekDates = useMemo(() => datesInWeek(week.start), [week.start]);
 
   const load = useCallback(async () => {
-    const [overview, byUser, requests, staff] = await Promise.all([
+    const [overview, byUser, requests, staff, projects] = await Promise.all([
       api.getOverviewStats(week.end),
       api.getWeekTimesheets(week.start, week.end),
       api.getPendingBackdateRequests(),
       api.getStaff(),
+      api.getProjects(),
     ]);
+    setStaffList(staff);
+    setProjectList(projects);
     const workedUserIds = Object.keys(byUser);
     const totalMinutes = Object.values(byUser)
       .flat()
@@ -165,9 +171,9 @@ function Overview() {
     return () => { active = false; };
   }, [load]);
 
-  const respond = async (request, status) => {
+  const respond = async (request, status, denialReason) => {
     setBusyId(request.id);
-    await api.respondToBackdateRequest(request.id, { status, respondedBy: profile?.uid, entryClientId: request.entryClientId });
+    await api.respondToBackdateRequest(request.id, { status, respondedBy: profile?.uid, entryClientId: request.entryClientId, denialReason });
     setStats((prev) => prev && { ...prev, openBackdateRequestCount: Math.max(0, prev.openBackdateRequestCount - 1) });
     // Approving/rejecting can move hours between the green and red totals
     // (and, if approved, into a day column), so just reload the grid rather
@@ -235,13 +241,13 @@ function Overview() {
           backdateRequests.map((r, i) => {
             const isBusy = busyId === r.id;
             return (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", borderBottom: i < backdateRequests.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <div key={r.id} onClick={() => setReviewing(r)} title="Click to review" style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", cursor: "pointer", borderBottom: i < backdateRequests.length - 1 ? `1px solid ${C.border}` : "none" }}>
                 <AlertCircle size={16} color={C.warn} />
                 <div style={{ flex: 1, color: C.white, fontSize: 13 }}>
                   Backdate request for {r.requestedDate} · {(r.durationMinutes / 60).toFixed(1)}h
                   {r.reason ? <span style={{ color: C.greyDim }}> — {r.reason}</span> : null}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8 }} onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => respond(r, "approved")}
                     disabled={isBusy}
@@ -261,6 +267,86 @@ function Overview() {
             );
           })
         )}
+      </div>
+      {reviewing && (
+        <ReviewModal
+          request={reviewing}
+          staff={staffList.find((s) => s.id === reviewing.userId)}
+          project={projectList.find((p) => p.id === reviewing.projectId)}
+          busy={busyId === reviewing.id}
+          onClose={() => setReviewing(null)}
+          onRespond={async (status, denialReason) => {
+            await respond(reviewing, status, denialReason);
+            setReviewing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReviewModal({ request, staff, project, busy, onClose, onRespond }) {
+  const [denying, setDenying] = useState(false);
+  const [denialReason, setDenialReason] = useState("");
+  const rows = [
+    ["Staff", staff?.displayName || staff?.email || request.userId || "Unknown"],
+    ["Date requested", request.requestedDate || "—"],
+    ["Hours", request.durationMinutes != null ? `${(request.durationMinutes / 60).toFixed(1)}h` : "—"],
+    ["Project", project ? [project.projectCode, project.projectName].filter(Boolean).join(" — ") : "—"],
+    ["Reason", request.reason || "No reason given"],
+  ];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 440, maxWidth: "92vw", padding: 26 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+          <div style={{ color: C.white, fontSize: 16, fontWeight: 700 }}>Review Backdate Request</div>
+          <X size={18} color={C.grey} style={{ cursor: "pointer" }} onClick={onClose} />
+        </div>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ marginBottom: 12 }}>
+            <div style={{ color: C.grey, fontSize: 11, marginBottom: 4 }}>{label}</div>
+            <div style={{ color: C.white, fontSize: 13.5 }}>{value}</div>
+          </div>
+        ))}
+        {denying && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Reason for denying (required)</div>
+            <textarea
+              autoFocus
+              value={denialReason}
+              onChange={(e) => setDenialReason(e.target.value)}
+              rows={3}
+              style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13, fontFamily: "inherit", resize: "vertical" }}
+            />
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+          {!denying && (
+            <button
+              onClick={() => onRespond("approved")}
+              disabled={busy}
+              style={{ flex: 1, background: "rgba(76,175,125,0.12)", border: `1px solid ${C.good}`, color: C.good, borderRadius: 8, padding: "10px 0", fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}
+            >
+              {busy ? "…" : "Approve"}
+            </button>
+          )}
+          {denying && (
+            <button
+              onClick={() => { setDenying(false); setDenialReason(""); }}
+              disabled={busy}
+              style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "10px 0", fontWeight: 700, cursor: "pointer" }}
+            >
+              Back
+            </button>
+          )}
+          <button
+            onClick={() => (denying ? onRespond("rejected", denialReason.trim()) : setDenying(true))}
+            disabled={busy || (denying && !denialReason.trim())}
+            style={{ flex: 1, background: "rgba(224,115,109,0.12)", border: "1px solid #e0736d", color: "#e0736d", borderRadius: 8, padding: "10px 0", fontWeight: 700, cursor: "pointer", opacity: busy || (denying && !denialReason.trim()) ? 0.5 : 1 }}
+          >
+            {denying ? (busy ? "…" : "Confirm Deny") : "Deny"}
+          </button>
+        </div>
       </div>
     </div>
   );

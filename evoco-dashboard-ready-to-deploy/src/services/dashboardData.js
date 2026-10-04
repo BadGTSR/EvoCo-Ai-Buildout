@@ -210,11 +210,13 @@ export async function getPendingBackdateRequests() {
  * forever and never rejoins the normal hours totals even after approval.
  * entryClientId links the two docs (set when the entry was first logged).
  */
-export async function respondToBackdateRequest(requestId, { status, respondedBy, entryClientId }) {
+export async function respondToBackdateRequest(requestId, { status, respondedBy, entryClientId, denialReason }) {
   await updateDoc(doc(db, "backdateRequests", requestId), {
     status,
     respondedBy,
     respondedAt: serverTimestamp(),
+    // Only set when denied via the review popup (the quick Deny button has no reason).
+    ...(denialReason ? { denialReason } : {}),
   });
 
   if (entryClientId) {
