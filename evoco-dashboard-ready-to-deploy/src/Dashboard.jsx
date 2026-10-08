@@ -352,7 +352,9 @@ function ReviewModal({ request, staff, project, busy, onClose, onRespond }) {
   );
 }
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const fmtTime = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" }) : "—";
 
 function ExportModal({ defaultStart, defaultEnd, onClose }) {
   const [start, setStart] = useState(defaultStart);
@@ -626,10 +628,15 @@ function Approvals() {
                   return (
                     <div key={e.id} style={{ padding: "10px 0", borderBottom: i < selectedEntries.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 13 }}>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: C.grey }}>{DAY_LABELS[new Date(e.startTime).getDay()]}</span>
+                        <span style={{ color: C.grey }}>
+                          {new Date(e.startTime).toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short" })}
+                          <span style={{ color: C.greyDim }}> · {fmtTime(e.startTime)} – {fmtTime(e.endTime)}</span>
+                          {e.isBackdated && <span style={{ color: C.warn, marginLeft: 8, fontSize: 11 }}>Backdated</span>}
+                        </span>
                         <span style={{ color: C.amber, fontWeight: 600 }}>{((e.durationMinutes || 0) / 60).toFixed(1)}h</span>
                       </div>
                       <div style={{ color: C.white, fontSize: 12.5, marginTop: 2 }}>{detail}</div>
+                      {e.notes ? <div style={{ color: C.greyDim, fontSize: 12, marginTop: 2 }}>Reason: {e.notes}</div> : null}
                     </div>
                   );
                 })
