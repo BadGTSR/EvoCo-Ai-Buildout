@@ -626,17 +626,17 @@ function Approvals() {
                       ? [projectLabel, stage?.stageName].filter(Boolean).join(" · ") || "—"
                       : e.entryType.replace("_", " ");
                   return (
-                    <div key={e.id} style={{ padding: "10px 0", borderBottom: i < selectedEntries.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 13 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: C.grey }}>
+                    <div key={e.id} style={{ padding: "14px 0", borderBottom: i < selectedEntries.length - 1 ? `1px solid ${C.border}` : "none", fontSize: 14.5 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                        <span style={{ color: C.white, fontWeight: 600 }}>
                           {new Date(e.startTime).toLocaleDateString("en-NZ", { weekday: "short", day: "numeric", month: "short" })}
-                          <span style={{ color: C.greyDim }}> · {fmtTime(e.startTime)} – {fmtTime(e.endTime)}</span>
-                          {e.isBackdated && <span style={{ color: C.warn, marginLeft: 8, fontSize: 11 }}>Backdated</span>}
+                          <span style={{ color: "#d0d0d0", fontWeight: 400 }}> · {fmtTime(e.startTime)} – {fmtTime(e.endTime)}</span>
+                          {e.isBackdated && <span style={{ color: C.warn, marginLeft: 8, fontSize: 12, fontWeight: 700 }}>Backdated</span>}
                         </span>
-                        <span style={{ color: C.amber, fontWeight: 600 }}>{((e.durationMinutes || 0) / 60).toFixed(1)}h</span>
+                        <span style={{ color: C.amber, fontWeight: 700, fontSize: 15 }}>{((e.durationMinutes || 0) / 60).toFixed(1)}h</span>
                       </div>
-                      <div style={{ color: C.white, fontSize: 12.5, marginTop: 2 }}>{detail}</div>
-                      {e.notes ? <div style={{ color: C.greyDim, fontSize: 12, marginTop: 2 }}>Reason: {e.notes}</div> : null}
+                      <div style={{ color: C.white, fontSize: 14, marginTop: 4 }}>{detail}</div>
+                      {e.notes ? <div style={{ color: "#d0d0d0", fontSize: 13.5, marginTop: 4 }}>Reason: {e.notes}</div> : null}
                     </div>
                   );
                 })
