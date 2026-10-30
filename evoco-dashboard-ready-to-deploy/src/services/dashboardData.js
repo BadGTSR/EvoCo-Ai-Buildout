@@ -24,6 +24,16 @@ export async function getProjects() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
+/** Create a new active project. Workers see it in the mobile app once status is "active". */
+export async function addProject({ projectCode, projectName }) {
+  return addDoc(collection(db, "projects"), {
+    projectCode,
+    projectName,
+    status: "active",
+    createdAt: serverTimestamp(),
+  });
+}
+
 export async function getStagesForProject(projectId) {
   const q = query(collection(db, "projects", projectId, "stages"), orderBy("stageCode", "asc"));
   const snap = await getDocs(q);

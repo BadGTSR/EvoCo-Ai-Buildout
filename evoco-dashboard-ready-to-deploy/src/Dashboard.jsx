@@ -690,6 +690,10 @@ function ProjectsAndVariations() {
   const [stageForm, setStageForm] = useState({ stageCode: "", stageName: "" });
   const [saving, setSaving] = useState(false);
   const [savingStage, setSavingStage] = useState(false);
+  const [showAddProjectModal, setShowAddProjectModal] = useState(false);
+  const [projectForm, setProjectForm] = useState({ projectCode: "", projectName: "" });
+  const [savingProject, setSavingProject] = useState(false);
+  const [projectError, setProjectError] = useState("");
 
   const loadStages = useCallback(async (projectId) => {
     const stages = await api.getStagesForProject(projectId);
@@ -723,6 +727,29 @@ function ProjectsAndVariations() {
     setShowAdd(null);
   };
 
+  const submitProject = async () => {
+    const projectCode = projectForm.projectCode.trim();
+    const projectName = projectForm.projectName.trim();
+    if (!projectCode || !projectName) return;
+    if (projects.some((p) => (p.projectCode || "").toLowerCase() === projectCode.toLowerCase())) {
+      setProjectError("A project with that code already exists.");
+      return;
+    }
+    setSavingProject(true);
+    setProjectError("");
+    try {
+      const ref = await api.addProject({ projectCode, projectName });
+      setProjects((prev) => [...prev, { id: ref.id, projectCode, projectName, status: "active" }]);
+      setStagesByProject((prev) => ({ ...prev, [ref.id]: [] }));
+      setExpanded(ref.id);
+      setProjectForm({ projectCode: "", projectName: "" });
+      setShowAddProjectModal(false);
+    } catch (err) {
+      setProjectError("Could not save project. Please try again.");
+    }
+    setSavingProject(false);
+  };
+
   const submitStage = async () => {
     if (!stageForm.stageCode || !stageForm.stageName) return;
     setSavingStage(true);
@@ -740,6 +767,15 @@ function ProjectsAndVariations() {
 
   return (
     <div style={{ padding: 32 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <button
+          onClick={() => { setProjectError(""); setShowAddProjectModal(true); }}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+        >
+          <Plus size={15} /> Add Project
+        </button>
+      </div>
+      {projects.length === 0 && <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 12 }}>No projects yet.</div>}
       {projects.map((p) => {
         const allStages = stagesByProject[p.id] || [];
         const stages = allStages.filter((s) => !s.isVariation);
@@ -794,6 +830,39 @@ function ProjectsAndVariations() {
           </div>
         );
       })}
+
+      {showAddProjectModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAddProjectModal(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 420, padding: 26 }}>
+            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>New Project</div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Project Code</div>
+              <input
+                value={projectForm.projectCode}
+                onChange={(e) => setProjectForm({ ...projectForm, projectCode: e.target.value })}
+                placeholder="e.g. P-1042"
+                style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Project Name</div>
+              <input
+                value={projectForm.projectName}
+                onChange={(e) => setProjectForm({ ...projectForm, projectName: e.target.value })}
+                placeholder="e.g. Smith Residence"
+                style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
+              />
+            </div>
+            {projectError && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 14 }}>{projectError}</div>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={submitProject} disabled={savingProject} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: savingProject ? 0.6 : 1 }}>
+                {savingProject ? "Saving…" : "Save Project"}
+              </button>
+              <button onClick={() => setShowAddProjectModal(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAdd && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAdd(null)}>
