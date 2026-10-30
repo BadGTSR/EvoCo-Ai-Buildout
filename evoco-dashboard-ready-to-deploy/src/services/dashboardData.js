@@ -10,6 +10,8 @@ import {
   addDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
+  writeBatch,
   query,
   where,
   orderBy,
@@ -24,14 +26,44 @@ export async function getProjects() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-/** Create a new active project. Workers see it in the mobile app once status is "active". */
+/** The standard stage list copied onto every new project. Stored at settings/stageTemplate. */
+export async function getStageTemplate() {
+  const snap = await getDoc(doc(db, "settings", "stageTemplate"));
+  return snap.exists() ? snap.data().stages || [] : [];
+}
+
+export async function saveStageTemplate(stages) {
+  const clean = stages.map((s) => ({ stageCode: s.stageCode.trim(), stageName: s.stageName.trim() }));
+  await setDoc(doc(db, "settings", "stageTemplate"), { stages: clean, updatedAt: serverTimestamp() });
+  return clean;
+}
+
+/** Create a new active project, pre-filled with the standard stage list. Returns the doc ref and the stages added. */
 export async function addProject({ projectCode, projectName }) {
-  return addDoc(collection(db, "projects"), {
+  const template = await getStageTemplate();
+  const ref = await addDoc(collection(db, "projects"), {
     projectCode,
     projectName,
     status: "active",
     createdAt: serverTimestamp(),
   });
+  if (template.length > 0) {
+    const batch = writeBatch(db);
+    template.forEach((s) => {
+      batch.set(doc(collection(db, "projects", ref.id, "stages")), {
+        stageCode: s.stageCode,
+        stageName: s.stageName,
+        isVariation: false,
+        createdAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+  }
+  return ref;
+}
+
+export async function deleteStage(projectId, stageId) {
+  return deleteDoc(doc(db, "projects", projectId, "stages", stageId));
 }
 
 export async function getStagesForProject(projectId) {

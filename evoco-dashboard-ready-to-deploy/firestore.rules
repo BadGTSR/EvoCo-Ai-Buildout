@@ -34,6 +34,12 @@ service cloud.firestore {
       }
     }
 
+    // Standard stage list copied onto each new project (edited by managers).
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isManager();
+    }
+
     // Site check-in (QR scan and manual select) happens BEFORE login by
     // design, so reading site info can't require auth. Site data (address,
     // GPS, project code) isn't sensitive — anyone standing at the site can
