@@ -736,15 +736,32 @@ function ProjectsAndVariations() {
   }, []);
 
   useEffect(() => {
-    api.getProjects().then((data) => {
-      setProjects(data);
+    api.getProjects().then((all) => {
+      setProjects(all);
       setLoading(false);
-      if (data[0]) {
-        setExpanded(data[0].id);
-        loadStages(data[0].id);
+      const first = all.find((p) => p.status !== "deleted");
+      if (first) {
+        setExpanded(first.id);
+        loadStages(first.id);
       }
     });
   }, [loadStages]);
+
+  const removeProject = async (p) => {
+    if (!window.confirm(`Delete job "${p.projectCode} — ${p.projectName}"? It will be hidden from the app and moved to Deleted Jobs, where you can restore it. Logged time is kept.`)) return;
+    await api.deleteProject(p.id);
+    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "deleted" } : x)));
+    if (expanded === p.id) setExpanded(null);
+  };
+
+  const restoreDeleted = async (p) => {
+    if (projects.some((x) => x.status !== "deleted" && (x.projectCode || "").toLowerCase() === (p.projectCode || "").toLowerCase())) {
+      window.alert(`An active job with code ${p.projectCode} already exists. Delete or rename that one first.`);
+      return;
+    }
+    await api.restoreProject(p.id);
+    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "active" } : x)));
+  };
 
   const toggleExpand = (project) => {
     const next = expanded === project.id ? null : project.id;
@@ -766,7 +783,7 @@ function ProjectsAndVariations() {
     const projectCode = projectForm.projectCode.trim();
     const projectName = projectForm.projectName.trim();
     if (!projectCode || !projectName) return;
-    if (projects.some((p) => (p.projectCode || "").toLowerCase() === projectCode.toLowerCase())) {
+    if (projects.some((p) => p.status !== "deleted" && (p.projectCode || "").toLowerCase() === projectCode.toLowerCase())) {
       setProjectError("A project with that code already exists.");
       return;
     }
@@ -799,6 +816,8 @@ function ProjectsAndVariations() {
 
   const showAddProject = projects.find((p) => p.id === showAdd);
   const showAddStageProject = projects.find((p) => p.id === showAddStage);
+  const activeProjects = projects.filter((p) => p.status !== "deleted");
+  const deletedProjects = projects.filter((p) => p.status === "deleted");
 
   return (
     <div style={{ padding: 32 }}>
@@ -816,8 +835,8 @@ function ProjectsAndVariations() {
           <Plus size={15} /> Add Project
         </button>
       </div>
-      {projects.length === 0 && <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 12 }}>No projects yet.</div>}
-      {projects.map((p) => {
+      {activeProjects.length === 0 && <div style={{ color: C.greyDim, fontSize: 13, marginBottom: 12 }}>No projects yet.</div>}
+      {activeProjects.map((p) => {
         const allStages = stagesByProject[p.id] || [];
         const stages = allStages.filter((s) => !s.isVariation);
         const variations = allStages.filter((s) => s.isVariation);
@@ -831,7 +850,16 @@ function ProjectsAndVariations() {
                 <div style={{ color: C.amber, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>{p.projectCode}</div>
                 <div style={{ color: C.white, fontSize: 15, fontWeight: 700 }}>{p.projectName}</div>
               </div>
-              <ChevronDown size={18} color={C.grey} style={{ transform: expanded === p.id ? "rotate(180deg)" : "none" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeProject(p); }}
+                  title="Delete job"
+                  style={{ background: "none", border: "none", color: C.grey, cursor: "pointer", display: "flex", padding: 4 }}
+                >
+                  <Trash2 size={16} />
+                </button>
+                <ChevronDown size={18} color={C.grey} style={{ transform: expanded === p.id ? "rotate(180deg)" : "none" }} />
+              </div>
             </div>
             {expanded === p.id && (
               <div style={{ padding: "0 18px 18px" }}>
@@ -878,6 +906,26 @@ function ProjectsAndVariations() {
           </div>
         );
       })}
+
+      {deletedProjects.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{ color: C.grey, fontSize: 11, letterSpacing: 1, marginBottom: 10 }}>DELETED JOBS</div>
+          {deletedProjects.map((p) => (
+            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 10, opacity: 0.75 }}>
+              <div>
+                <div style={{ color: C.greyDim, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>{p.projectCode}</div>
+                <div style={{ color: C.grey, fontSize: 14, fontWeight: 600 }}>{p.projectName}</div>
+              </div>
+              <button
+                onClick={() => restoreDeleted(p)}
+                style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.amber, borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+              >
+                Restore
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showTemplate && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowTemplate(false)}>
@@ -1048,7 +1096,8 @@ function QRGenerator() {
   const [locError, setLocError] = useState("");
 
   useEffect(() => {
-    Promise.all([api.getProjects(), api.getSites()]).then(([projectData, siteData]) => {
+    Promise.all([api.getProjects(), api.getSites()]).then(([allProjects, siteData]) => {
+      const projectData = allProjects.filter((p) => p.status !== "deleted");
       setProjects(projectData);
       setSites(siteData);
       if (projectData[0]) setNewProjectId(projectData[0].id);

@@ -72,6 +72,19 @@ export async function addProject({ projectCode, projectName }) {
   return ref;
 }
 
+/**
+ * Soft delete: the project, its stages and all logged time stay in Firestore
+ * so it can be restored. status "deleted" hides it from the mobile app, which
+ * only loads status "active" projects.
+ */
+export async function deleteProject(projectId) {
+  return updateDoc(doc(db, "projects", projectId), { status: "deleted", deletedAt: serverTimestamp() });
+}
+
+export async function restoreProject(projectId) {
+  return updateDoc(doc(db, "projects", projectId), { status: "active", deletedAt: null });
+}
+
 export async function deleteStage(projectId, stageId) {
   return deleteDoc(doc(db, "projects", projectId, "stages", stageId));
 }
