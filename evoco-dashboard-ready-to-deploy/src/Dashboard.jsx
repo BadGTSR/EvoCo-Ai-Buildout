@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, ChevronLeft, ChevronRight, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2, Lock, FileSpreadsheet, Trash2 } from "lucide-react";
+import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, ChevronLeft, ChevronRight, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2, Lock, FileSpreadsheet, Trash2, Archive, ArchiveRestore } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import * as api from "./services/dashboardData";
 import LoginScreen from "./LoginScreen";
@@ -38,6 +38,8 @@ function Sidebar({ view, setView }) {
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "approvals", label: "Weekly Approvals", icon: FileCheck },
     { id: "projects", label: "Projects & Variations", icon: FolderKanban },
+    { id: "archived", label: "Archived Jobs", icon: Archive },
+    { id: "deleted", label: "Deleted Jobs", icon: Trash2 },
     { id: "qr", label: "Site QR Codes", icon: QrCode },
     { id: "attendance", label: "Attendance", icon: Clock },
     { id: "team", label: "Team", icon: Users },
@@ -110,6 +112,9 @@ function StatCard({ label, value, sub, color }) {
     </div>
   );
 }
+
+/** A job is live (shown on Projects, QR codes, the app) unless it has been archived or deleted. */
+const isLiveJob = (p) => p.status !== "deleted" && p.status !== "archived";
 
 function StatusBadge({ status }) {
   const map = {
@@ -722,7 +727,7 @@ function ProjectsAndVariations() {
     api.getProjects().then((all) => {
       setProjects(all);
       setLoading(false);
-      const first = all.find((p) => p.status !== "deleted");
+      const first = all.find(isLiveJob);
       if (first) {
         setExpanded(first.id);
         loadStages(first.id);
@@ -737,13 +742,11 @@ function ProjectsAndVariations() {
     if (expanded === p.id) setExpanded(null);
   };
 
-  const restoreDeleted = async (p) => {
-    if (projects.some((x) => x.status !== "deleted" && (x.projectCode || "").toLowerCase() === (p.projectCode || "").toLowerCase())) {
-      window.alert(`An active job with code ${p.projectCode} already exists. Delete or rename that one first.`);
-      return;
-    }
-    await api.restoreProject(p.id);
-    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "active" } : x)));
+  const archiveJob = async (p) => {
+    if (!window.confirm(`Archive job "${p.projectCode} — ${p.projectName}"? It will be hidden from the app and moved to Archived Jobs, where you can bring it back.`)) return;
+    await api.archiveProject(p.id);
+    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "archived" } : x)));
+    if (expanded === p.id) setExpanded(null);
   };
 
   const toggleExpand = (project) => {
@@ -766,7 +769,7 @@ function ProjectsAndVariations() {
     const projectCode = projectForm.projectCode.trim();
     const projectName = projectForm.projectName.trim();
     if (!projectCode || !projectName) return;
-    if (projects.some((p) => p.status !== "deleted" && (p.projectCode || "").toLowerCase() === projectCode.toLowerCase())) {
+    if (projects.some((p) => isLiveJob(p) && (p.projectCode || "").toLowerCase() === projectCode.toLowerCase())) {
       setProjectError("A project with that code already exists.");
       return;
     }
@@ -805,8 +808,7 @@ function ProjectsAndVariations() {
 
   const showAddProject = projects.find((p) => p.id === showAdd);
   const showAddStageProject = projects.find((p) => p.id === showAddStage);
-  const activeProjects = projects.filter((p) => p.status !== "deleted");
-  const deletedProjects = projects.filter((p) => p.status === "deleted");
+  const activeProjects = projects.filter(isLiveJob);
 
   return (
     <div style={{ padding: 32 }}>
@@ -834,6 +836,13 @@ function ProjectsAndVariations() {
                 <div style={{ color: C.white, fontSize: 15, fontWeight: 700 }}>{p.projectName}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); archiveJob(p); }}
+                  title="Archive job"
+                  style={{ background: "none", border: "none", color: C.grey, cursor: "pointer", display: "flex", padding: 4 }}
+                >
+                  <Archive size={16} />
+                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeProject(p); }}
                   title="Delete job"
@@ -889,26 +898,6 @@ function ProjectsAndVariations() {
           </div>
         );
       })}
-
-      {deletedProjects.length > 0 && (
-        <div style={{ marginTop: 28 }}>
-          <div style={{ color: C.grey, fontSize: 11, letterSpacing: 1, marginBottom: 10 }}>DELETED JOBS</div>
-          {deletedProjects.map((p) => (
-            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 10, opacity: 0.75 }}>
-              <div>
-                <div style={{ color: C.greyDim, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>{p.projectCode}</div>
-                <div style={{ color: C.grey, fontSize: 14, fontWeight: 600 }}>{p.projectName}</div>
-              </div>
-              <button
-                onClick={() => restoreDeleted(p)}
-                style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.amber, borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
-              >
-                Restore
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
 
       {showAddProjectModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAddProjectModal(false)}>
@@ -1071,7 +1060,7 @@ function QRGenerator() {
 
   useEffect(() => {
     Promise.all([api.getProjects(), api.getSites()]).then(([allProjects, siteData]) => {
-      const projectData = allProjects.filter((p) => p.status !== "deleted");
+      const projectData = allProjects.filter(isLiveJob);
       setProjects(projectData);
       setSites(siteData);
       if (projectData[0]) setNewProjectId(projectData[0].id);
@@ -1372,9 +1361,66 @@ function Team() {
   );
 }
 
+/** Lists archived or deleted jobs ("archived" | "deleted") with a button to bring them back to active. */
+function InactiveJobs({ mode }) {
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const archived = mode === "archived";
+
+  useEffect(() => {
+    api.getProjects().then((data) => {
+      setProjects(data);
+      setLoading(false);
+    });
+  }, []);
+
+  const restore = async (p) => {
+    if (projects.some((x) => isLiveJob(x) && (x.projectCode || "").toLowerCase() === (p.projectCode || "").toLowerCase())) {
+      window.alert(`An active job with code ${p.projectCode} already exists. Delete or archive that one first.`);
+      return;
+    }
+    await api.restoreProject(p.id);
+    setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "active" } : x)));
+  };
+
+  if (loading) return <LoadingBlock />;
+
+  const jobs = projects.filter((p) => p.status === mode);
+  const dateLabel = (p) => {
+    const ts = archived ? p.archivedAt : p.deletedAt;
+    return ts?.toDate ? `${archived ? "Archived" : "Deleted"} ${ts.toDate().toLocaleDateString()}` : "";
+  };
+
+  return (
+    <div style={{ padding: 32 }}>
+      <div style={{ color: C.grey, fontSize: 13, marginBottom: 18 }}>
+        {archived
+          ? "Completed jobs. They're hidden from the app but all their stages and logged time are kept."
+          : "Deleted jobs are hidden from the app but kept here in case one needs to be restored."}
+      </div>
+      {jobs.length === 0 && <div style={{ color: C.greyDim, fontSize: 13 }}>{archived ? "No archived jobs." : "No deleted jobs."}</div>}
+      {jobs.map((p) => (
+        <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", marginBottom: 10 }}>
+          <div>
+            <div style={{ color: C.amber, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>{p.projectCode}</div>
+            <div style={{ color: C.white, fontSize: 15, fontWeight: 700 }}>{p.projectName}</div>
+            {dateLabel(p) && <div style={{ color: C.greyDim, fontSize: 11.5, marginTop: 2 }}>{dateLabel(p)}</div>}
+          </div>
+          <button
+            onClick={() => restore(p)}
+            style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${C.border}`, color: C.amber, borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+          >
+            <ArchiveRestore size={15} /> {archived ? "Unarchive" : "Restore"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function DashboardShell() {
   const [view, setView] = useState("overview");
-  const titles = { overview: "Overview", approvals: "Weekly Approvals", projects: "Projects & Variations", qr: "Site QR Codes", attendance: "Attendance", team: "Team" };
+  const titles = { overview: "Overview", approvals: "Weekly Approvals", projects: "Projects & Variations", archived: "Archived Jobs", deleted: "Deleted Jobs", qr: "Site QR Codes", attendance: "Attendance", team: "Team" };
 
   return (
     <div style={{ display: "flex", height: "100vh", background: C.bg, fontFamily: "'Inter', -apple-system, sans-serif" }}>
@@ -1384,6 +1430,8 @@ function DashboardShell() {
         {view === "overview" && <Overview />}
         {view === "approvals" && <Approvals />}
         {view === "projects" && <ProjectsAndVariations />}
+        {view === "archived" && <InactiveJobs mode="archived" />}
+        {view === "deleted" && <InactiveJobs mode="deleted" />}
         {view === "qr" && <QRGenerator />}
         {view === "attendance" && <Attendance />}
         {view === "team" && <Team />}

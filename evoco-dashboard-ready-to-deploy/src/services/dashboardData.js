@@ -81,8 +81,14 @@ export async function deleteProject(projectId) {
   return updateDoc(doc(db, "projects", projectId), { status: "deleted", deletedAt: serverTimestamp() });
 }
 
+/** Archive a completed job: kept in full, hidden from the mobile app (which only loads "active" projects). */
+export async function archiveProject(projectId) {
+  return updateDoc(doc(db, "projects", projectId), { status: "archived", archivedAt: serverTimestamp() });
+}
+
+/** Bring a deleted or archived job back to active. */
 export async function restoreProject(projectId) {
-  return updateDoc(doc(db, "projects", projectId), { status: "active", deletedAt: null });
+  return updateDoc(doc(db, "projects", projectId), { status: "active", deletedAt: null, archivedAt: null });
 }
 
 export async function deleteStage(projectId, stageId) {
