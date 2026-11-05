@@ -44,7 +44,8 @@
         {
           "cameraPermission": "EvoCo needs camera access to take site photos."
         }
-      ]
+      ],
+      "expo-status-bar"
     ]
   }
 }
