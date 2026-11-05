@@ -1407,6 +1407,17 @@ function InactiveJobs({ mode }) {
     setProjects((prev) => prev.map((x) => (x.id === p.id ? { ...x, status: "active" } : x)));
   };
 
+  const deleteForever = async (p) => {
+    const typed = window.prompt(`Permanently delete "${p.projectCode} — ${p.projectName}" and its stages? This cannot be undone, and time already logged against it will lose its job label.\n\nType the job code (${p.projectCode}) to confirm.`);
+    if (typed === null) return;
+    if (typed.trim().toLowerCase() !== (p.projectCode || "").toLowerCase()) {
+      window.alert("Code didn't match — job not deleted.");
+      return;
+    }
+    await api.permanentlyDeleteProject(p.id);
+    setProjects((prev) => prev.filter((x) => x.id !== p.id));
+  };
+
   if (loading) return <LoadingBlock />;
 
   const jobs = projects.filter((p) => p.status === mode);
@@ -1430,12 +1441,23 @@ function InactiveJobs({ mode }) {
             <div style={{ color: C.white, fontSize: 15, fontWeight: 700 }}>{p.projectName}</div>
             {dateLabel(p) && <div style={{ color: C.greyDim, fontSize: 11.5, marginTop: 2 }}>{dateLabel(p)}</div>}
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {!archived && (
+            <button
+              onClick={() => deleteForever(p)}
+              title="Delete permanently"
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(224,115,109,0.4)", color: "#e0736d", borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+            >
+              <Trash2 size={15} /> Delete permanently
+            </button>
+          )}
           <button
             onClick={() => restore(p)}
             style={{ display: "flex", alignItems: "center", gap: 6, background: "transparent", border: `1px solid ${C.border}`, color: C.amber, borderRadius: 8, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
           >
             <ArchiveRestore size={15} /> {archived ? "Unarchive" : "Restore"}
           </button>
+          </div>
         </div>
       ))}
     </div>

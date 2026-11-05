@@ -86,6 +86,15 @@ export async function archiveProject(projectId) {
   return updateDoc(doc(db, "projects", projectId), { status: "archived", archivedAt: serverTimestamp() });
 }
 
+/** Irreversible: removes the project doc and its stages (Firestore doesn't cascade to subcollections). */
+export async function permanentlyDeleteProject(projectId) {
+  const stages = await getDocs(collection(db, "projects", projectId, "stages"));
+  const batch = writeBatch(db);
+  stages.docs.forEach((d) => batch.delete(d.ref));
+  batch.delete(doc(db, "projects", projectId));
+  await batch.commit();
+}
+
 /** Bring a deleted or archived job back to active. */
 export async function restoreProject(projectId) {
   return updateDoc(doc(db, "projects", projectId), { status: "active", deletedAt: null, archivedAt: null });
