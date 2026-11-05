@@ -5,6 +5,9 @@ import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { BREAK_TYPES } from './timesheetService';
 
+/** Pseudo-project that breaks are logged against; not a Firestore doc, so it never comes back from getMyProjects. */
+export const EVOCO_INTERNAL_PROJECT = { id: 'evoco-internal', projectCode: 'EVOCO', projectName: 'EvoCo Internal' };
+
 /** Active projects assigned to this worker, plus the always-visible EVOCO internal project */
 export async function getMyProjects(userId) {
   const q = query(collection(db, 'projects'), where('status', '==', 'active'));

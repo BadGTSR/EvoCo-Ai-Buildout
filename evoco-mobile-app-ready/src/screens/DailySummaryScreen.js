@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, 
 import { useFocusEffect } from '@react-navigation/native';
 import { colors, spacing } from '../theme';
 import { getEntriesForDate, PAYABLE_ENTRY_TYPES } from '../services/timesheetService';
-import { getMyProjects, getStagesForProject, getBreakOptionForEntryType } from '../services/projectService';
+import { getMyProjects, getStagesForProject, getBreakOptionForEntryType, EVOCO_INTERNAL_PROJECT } from '../services/projectService';
 import { getPendingCount } from '../services/offlineSync';
 import { useAuth } from '../context/AuthContext';
 import { localDateString } from '../utils/dateUtils';
@@ -37,9 +37,9 @@ export default function DailySummaryScreen({ navigation }) {
     setPendingCount(getPendingCount());
 
     const projects = await getMyProjects(user.uid);
-    setProjectsById(Object.fromEntries(projects.map((p) => [p.id, p])));
+    setProjectsById(Object.fromEntries([...projects, EVOCO_INTERNAL_PROJECT].map((p) => [p.id, p])));
 
-    const projectIds = [...new Set(sorted.map((e) => e.projectId).filter(Boolean))];
+    const projectIds = [...new Set(sorted.map((e) => e.projectId).filter((id) => id && id !== EVOCO_INTERNAL_PROJECT.id))];
     const stageLists = await Promise.all(projectIds.map((id) => getStagesForProject(id)));
     const stageEntries = stageLists.flat().map((s) => [s.id, s]);
     setStagesById(Object.fromEntries(stageEntries));

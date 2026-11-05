@@ -151,6 +151,12 @@ export function getPendingWrites(collectionName) {
   });
 }
 
+/** Drop a write that hasn't synced yet (id from getPendingWrites, e.g. "pending_42") so it never reaches Firestore. */
+export function removePendingWrite(pendingId) {
+  const rowId = pendingId.replace('pending_', '');
+  database.runSync(`DELETE FROM pending_writes WHERE id = ? AND synced = 0;`, [rowId]);
+}
+
 /**
  * Edit a write that hasn't synced to Firestore yet (id from getPendingWrites,
  * e.g. "pending_42"). Merges into the still-local payload before it's ever

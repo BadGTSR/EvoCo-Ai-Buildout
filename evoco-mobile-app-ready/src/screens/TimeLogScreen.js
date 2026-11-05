@@ -16,7 +16,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing } from '../theme';
-import { logTimeEntry, updateTimeEntry, uploadTimesheetPhoto, getEntriesForDate } from '../services/timesheetService';
+import { logTimeEntry, updateTimeEntry, deleteTimeEntry, uploadTimesheetPhoto, getEntriesForDate } from '../services/timesheetService';
 import { useAuth } from '../context/AuthContext';
 import {
   formatEntryDate,
@@ -182,6 +182,30 @@ export default function TimeLogScreen({ navigation, route }) {
     }
   };
 
+  const handleDelete = () => {
+    Alert.alert('Delete this entry?', 'This removes it from your timesheet. This can’t be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          if (isSavingRef.current) return;
+          isSavingRef.current = true;
+          setSaving(true);
+          try {
+            await deleteTimeEntry(entry);
+            navigation.goBack();
+          } catch (err) {
+            Alert.alert('Couldn’t delete', err.message || 'Something went wrong deleting this entry.');
+          } finally {
+            setSaving(false);
+            isSavingRef.current = false;
+          }
+        },
+      },
+    ]);
+  };
+
   // Android's dialog closes itself; iOS's spinner stays open until "Done".
   const onChangeActivePicker = (event, selected) => {
     if (Platform.OS === 'android') setActivePicker(null);
@@ -342,6 +366,12 @@ export default function TimeLogScreen({ navigation, route }) {
           <Text style={styles.saveButtonText}>{isEditing ? 'Save Changes' : 'Save Entry'}</Text>
         )}
       </TouchableOpacity>
+
+      {isEditing && (
+        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete} disabled={saving}>
+          <Text style={styles.deleteButtonText}>Delete Entry</Text>
+        </TouchableOpacity>
+      )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -455,5 +485,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveButtonDisabled: { opacity: 0.6 },
+  deleteButton: {
+    borderWidth: 1,
+    borderColor: colors.error,
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  deleteButtonText: { color: colors.error, fontWeight: '700', fontSize: 15 },
   saveButtonText: { color: '#141414', fontWeight: '700', fontSize: 16 },
 });

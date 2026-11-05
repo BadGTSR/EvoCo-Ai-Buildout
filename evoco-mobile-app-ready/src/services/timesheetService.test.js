@@ -3,6 +3,7 @@ jest.mock('./offlineSync', () => ({
   queueWrite: jest.fn(),
   getPendingWrites: jest.fn(() => []),
   updatePendingWrite: jest.fn(),
+  removePendingWrite: jest.fn(),
   generateClientId: jest.fn(() => 'generated-client-id'),
 }));
 jest.mock('firebase/firestore', () => ({
@@ -13,6 +14,7 @@ jest.mock('firebase/firestore', () => ({
   getDocs: jest.fn(),
   doc: jest.fn((_db, _col, id) => ({ id })),
   updateDoc: jest.fn(() => Promise.resolve()),
+  deleteDoc: jest.fn(() => Promise.resolve()),
 }));
 jest.mock('firebase/storage', () => ({
   ref: jest.fn(),
@@ -20,9 +22,9 @@ jest.mock('firebase/storage', () => ({
   getDownloadURL: jest.fn(),
 }));
 
-const { logTimeEntry, updateTimeEntry, getEntriesForDate } = require('./timesheetService');
-const { queueWrite, updatePendingWrite, getPendingWrites } = require('./offlineSync');
-const { updateDoc, getDocs } = require('firebase/firestore');
+const { logTimeEntry, updateTimeEntry, deleteTimeEntry, getEntriesForDate } = require('./timesheetService');
+const { queueWrite, updatePendingWrite, removePendingWrite, getPendingWrites } = require('./offlineSync');
+const { updateDoc, deleteDoc, getDocs } = require('firebase/firestore');
 
 describe('logTimeEntry', () => {
   beforeEach(() => {
@@ -231,5 +233,24 @@ describe('getEntriesForDate offline/synced dedup', () => {
     const entries = await getEntriesForDate('u1', '2026-09-15');
 
     expect(entries).toHaveLength(2);
+  });
+});
+
+describe('deleteTimeEntry', () => {
+  beforeEach(() => {
+    deleteDoc.mockClear();
+    removePendingWrite.mockClear();
+  });
+
+  it('deletes a synced entry from Firestore', async () => {
+    await deleteTimeEntry({ id: 'abc' });
+    expect(deleteDoc).toHaveBeenCalledTimes(1);
+    expect(removePendingWrite).not.toHaveBeenCalled();
+  });
+
+  it('drops an unsynced entry from the local queue without touching Firestore', async () => {
+    await deleteTimeEntry({ id: 'pending_7', _pending: true });
+    expect(removePendingWrite).toHaveBeenCalledWith('pending_7');
+    expect(deleteDoc).not.toHaveBeenCalled();
   });
 });

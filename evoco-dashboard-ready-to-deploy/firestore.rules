@@ -62,7 +62,10 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isManager() ||
         (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow delete: if isManager();
+      // Workers can remove their own same-day entries (not backdated ones,
+      // which are under manager review); managers can remove any.
+      allow delete: if isManager() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid && resource.data.isBackdated == false);
     }
 
     match /weeklyApprovals/{approvalId} {

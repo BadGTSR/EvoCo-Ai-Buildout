@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { colors, spacing } from '../theme';
-import { getMyProjects, getBreakOptions } from '../services/projectService';
+import { getMyProjects, getBreakOptions, EVOCO_INTERNAL_PROJECT } from '../services/projectService';
 import { useAuth } from '../context/AuthContext';
-
-const EVOCO_INTERNAL_PROJECT = { id: 'evoco-internal', projectCode: 'EVOCO', projectName: 'EvoCo Internal' };
 
 export default function ProjectSelectorScreen({ navigation }) {
   const { user } = useAuth();

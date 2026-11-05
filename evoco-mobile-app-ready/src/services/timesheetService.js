@@ -9,10 +9,11 @@ import {
   orderBy,
   doc,
   updateDoc,
+  deleteDoc,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
-import { queueWrite, getPendingWrites, updatePendingWrite, generateClientId } from './offlineSync';
+import { queueWrite, getPendingWrites, updatePendingWrite, removePendingWrite, generateClientId } from './offlineSync';
 import { localDateString } from '../utils/dateUtils';
 
 /** Firestore Timestamp or plain ISO string (from a not-yet-synced local write) -> comparable millis. */
@@ -147,6 +148,14 @@ export async function updateTimeEntry(entry, { startTime, endTime, notes, photoU
   }
 }
 
+/** Remove an entry entirely. One that hasn't synced is just dropped from the local queue; a synced one is deleted from Firestore. */
+export async function deleteTimeEntry(entry) {
+  if (entry._pending) {
+    removePendingWrite(entry.id);
+  } else {
+    await deleteDoc(doc(db, 'timesheetEntries', entry.id));
+  }
+}
 
 /** Upload a photo to Cloud Storage under the project's timesheet-photos folder */
 export async function uploadTimesheetPhoto({ projectCode, userId, localUri }) {
