@@ -694,35 +694,18 @@ function ProjectsAndVariations() {
   const [projectForm, setProjectForm] = useState({ projectCode: "", projectName: "" });
   const [savingProject, setSavingProject] = useState(false);
   const [projectError, setProjectError] = useState("");
-  const [showTemplate, setShowTemplate] = useState(false);
   const [templateRows, setTemplateRows] = useState([]);
-  const [savingTemplate, setSavingTemplate] = useState(false);
-  const [templateError, setTemplateError] = useState("");
+  const [saveAsStandard, setSaveAsStandard] = useState(false);
 
-  const openTemplate = async () => {
-    setTemplateError("");
-    setShowTemplate(true);
+  const openAddProject = async () => {
+    setProjectError("");
+    setSaveAsStandard(false);
+    setShowAddProjectModal(true);
     setTemplateRows(await api.getStageTemplate());
   };
 
   const updateTemplateRow = (i, field, value) =>
     setTemplateRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
-
-  const saveTemplate = async () => {
-    const rows = templateRows.filter((r) => r.stageCode.trim() || r.stageName.trim());
-    if (rows.some((r) => !r.stageCode.trim() || !r.stageName.trim())) {
-      setTemplateError("Every stage needs both a code and a name.");
-      return;
-    }
-    setSavingTemplate(true);
-    try {
-      await api.saveStageTemplate(rows);
-      setShowTemplate(false);
-    } catch {
-      setTemplateError("Could not save. Please try again.");
-    }
-    setSavingTemplate(false);
-  };
 
   const removeStage = async (projectId, stage) => {
     if (!window.confirm(`Delete stage "${stage.stageCode} — ${stage.stageName}"? Time already logged against it keeps its label.`)) return;
@@ -787,10 +770,16 @@ function ProjectsAndVariations() {
       setProjectError("A project with that code already exists.");
       return;
     }
+    const stageRows = templateRows.filter((r) => r.stageCode.trim() || r.stageName.trim());
+    if (stageRows.some((r) => !r.stageCode.trim() || !r.stageName.trim())) {
+      setProjectError("Every stage needs both a code and a name.");
+      return;
+    }
     setSavingProject(true);
     setProjectError("");
     try {
-      const ref = await api.addProject({ projectCode, projectName });
+      if (saveAsStandard) await api.saveStageTemplate(stageRows);
+      const ref = await api.addProject({ projectCode, projectName, stages: stageRows });
       setProjects((prev) => [...prev, { id: ref.id, projectCode, projectName, status: "active" }]);
       await loadStages(ref.id);
       setExpanded(ref.id);
@@ -823,13 +812,7 @@ function ProjectsAndVariations() {
     <div style={{ padding: 32 }}>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginBottom: 16 }}>
         <button
-          onClick={openTemplate}
-          style={{ background: "transparent", border: `1px solid ${C.border}`, color: C.white, borderRadius: 8, padding: "10px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
-        >
-          Standard Stages
-        </button>
-        <button
-          onClick={() => { setProjectError(""); setShowAddProjectModal(true); }}
+          onClick={openAddProject}
           style={{ display: "flex", alignItems: "center", gap: 6, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
         >
           <Plus size={15} /> Add Project
@@ -927,54 +910,9 @@ function ProjectsAndVariations() {
         </div>
       )}
 
-      {showTemplate && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowTemplate(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 520, maxHeight: "85vh", overflowY: "auto", padding: 26 }}>
-            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Standard Stages</div>
-            <div style={{ color: C.grey, fontSize: 12, marginBottom: 16 }}>Added automatically to every new project. Changing this doesn't affect existing projects.</div>
-            {templateRows.map((r, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <input
-                  value={r.stageCode}
-                  onChange={(e) => updateTemplateRow(i, "stageCode", e.target.value)}
-                  placeholder="Code"
-                  style={{ width: 80, boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 10px", color: C.white, fontSize: 13 }}
-                />
-                <input
-                  value={r.stageName}
-                  onChange={(e) => updateTemplateRow(i, "stageName", e.target.value)}
-                  placeholder="Stage name"
-                  style={{ flex: 1, boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 10px", color: C.white, fontSize: 13 }}
-                />
-                <button
-                  onClick={() => setTemplateRows((rows) => rows.filter((_, idx) => idx !== i))}
-                  title="Remove"
-                  style={{ background: "none", border: "none", color: C.grey, cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => setTemplateRows((rows) => [...rows, { stageCode: "", stageName: "" }])}
-              style={{ display: "flex", alignItems: "center", gap: 6, color: C.amber, background: "none", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "6px 0 18px" }}
-            >
-              <Plus size={15} /> Add row
-            </button>
-            {templateError && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 14 }}>{templateError}</div>}
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={saveTemplate} disabled={savingTemplate} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: savingTemplate ? 0.6 : 1 }}>
-                {savingTemplate ? "Saving…" : "Save Standard Stages"}
-              </button>
-              <button onClick={() => setShowTemplate(false)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showAddProjectModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAddProjectModal(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 420, padding: 26 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 460, maxHeight: "90vh", overflowY: "auto", padding: 26 }}>
             <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>New Project</div>
             <div style={{ marginBottom: 12 }}>
               <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Project Code</div>
@@ -985,7 +923,7 @@ function ProjectsAndVariations() {
                 style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
               />
             </div>
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 16 }}>
               <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Project Name</div>
               <input
                 value={projectForm.projectName}
@@ -994,6 +932,42 @@ function ProjectsAndVariations() {
                 style={{ width: "100%", boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13 }}
               />
             </div>
+            <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Stages</div>
+            <div style={{ maxHeight: 260, overflowY: "auto", marginBottom: 4 }}>
+              {templateRows.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <input
+                    value={r.stageCode}
+                    onChange={(e) => updateTemplateRow(i, "stageCode", e.target.value)}
+                    placeholder="Code"
+                    style={{ width: 70, boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 10px", color: C.white, fontSize: 13 }}
+                  />
+                  <input
+                    value={r.stageName}
+                    onChange={(e) => updateTemplateRow(i, "stageName", e.target.value)}
+                    placeholder="Stage name"
+                    style={{ flex: 1, boxSizing: "border-box", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "9px 10px", color: C.white, fontSize: 13 }}
+                  />
+                  <button
+                    onClick={() => setTemplateRows((rows) => rows.filter((_, idx) => idx !== i))}
+                    title="Remove"
+                    style={{ background: "none", border: "none", color: C.grey, cursor: "pointer", display: "flex", alignItems: "center", padding: 4 }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setTemplateRows((rows) => [...rows, { stageCode: "", stageName: "" }])}
+              style={{ display: "flex", alignItems: "center", gap: 6, color: C.amber, background: "none", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "4px 0 10px" }}
+            >
+              <Plus size={15} /> Add stage
+            </button>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, color: C.grey, fontSize: 12, marginBottom: 18, cursor: "pointer" }}>
+              <input type="checkbox" checked={saveAsStandard} onChange={(e) => setSaveAsStandard(e.target.checked)} />
+              Save this list as the standard stages for future jobs
+            </label>
             {projectError && <div style={{ color: "#f87171", fontSize: 12, marginBottom: 14 }}>{projectError}</div>}
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={submitProject} disabled={savingProject} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: savingProject ? 0.6 : 1 }}>

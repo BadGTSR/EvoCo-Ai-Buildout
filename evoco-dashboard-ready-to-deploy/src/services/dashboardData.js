@@ -49,8 +49,8 @@ export async function saveStageTemplate(stages) {
 }
 
 /** Create a new active project, pre-filled with the standard stage list. Returns the doc ref and the stages added. */
-export async function addProject({ projectCode, projectName }) {
-  const template = await getStageTemplate();
+export async function addProject({ projectCode, projectName, stages }) {
+  const template = stages || (await getStageTemplate());
   const ref = await addDoc(collection(db, "projects"), {
     projectCode,
     projectName,
