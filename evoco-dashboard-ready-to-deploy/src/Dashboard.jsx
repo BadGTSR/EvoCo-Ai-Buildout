@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, ChevronLeft, ChevronRight, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2, Lock, FileSpreadsheet, Trash2, Archive, ArchiveRestore } from "lucide-react";
+import { QrCode, Download, Plus, CheckCircle2, Clock, Camera, ChevronDown, ChevronLeft, ChevronRight, Search, Bell, Settings, LayoutDashboard, FolderKanban, Users, FileCheck, Printer, X, AlertCircle, Loader2, Lock, FileSpreadsheet, Trash2, Archive, ArchiveRestore, PencilLine } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import * as api from "./services/dashboardData";
 import LoginScreen from "./LoginScreen";
@@ -690,6 +690,7 @@ function ProjectsAndVariations() {
   const [expanded, setExpanded] = useState(null);
   const [showAdd, setShowAdd] = useState(null); // holds project id
   const [showAddStage, setShowAddStage] = useState(null); // holds project id
+  const [editingStageId, setEditingStageId] = useState(null); // set when the stage popup is editing, not adding
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ description: "", value: "", status: "pending" });
   const [stageForm, setStageForm] = useState({ stageCode: "", stageName: "" });
@@ -797,11 +798,25 @@ function ProjectsAndVariations() {
   const submitStage = async () => {
     if (!stageForm.stageCode || !stageForm.stageName) return;
     setSavingStage(true);
-    await api.addStage(showAddStage, stageForm);
+    if (editingStageId) await api.updateStage(showAddStage, editingStageId, stageForm);
+    else await api.addStage(showAddStage, stageForm);
     await loadStages(showAddStage);
     setStageForm({ stageCode: "", stageName: "" });
     setSavingStage(false);
     setShowAddStage(null);
+    setEditingStageId(null);
+  };
+
+  const openEditStage = (projectId, stage) => {
+    setStageForm({ stageCode: stage.stageCode, stageName: stage.stageName });
+    setEditingStageId(stage.id);
+    setShowAddStage(projectId);
+  };
+
+  const closeStageModal = () => {
+    setShowAddStage(null);
+    setEditingStageId(null);
+    setStageForm({ stageCode: "", stageName: "" });
   };
 
   if (loading) return <LoadingBlock />;
@@ -860,6 +875,14 @@ function ProjectsAndVariations() {
                 {stages.map((s) => (
                   <div key={s.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bgCardAlt, borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
                     <div style={{ color: C.white, fontSize: 13, fontWeight: 600 }}>{s.stageCode} — {s.stageName}</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      onClick={() => openEditStage(p.id, s)}
+                      title="Edit stage"
+                      style={{ background: "none", border: "none", color: C.grey, cursor: "pointer", display: "flex", padding: 4 }}
+                    >
+                      <PencilLine size={15} />
+                    </button>
                     <button
                       onClick={() => removeStage(p.id, s)}
                       title="Delete stage"
@@ -867,6 +890,7 @@ function ProjectsAndVariations() {
                     >
                       <Trash2 size={15} />
                     </button>
+                    </div>
                   </div>
                 ))}
                 <button
@@ -1012,9 +1036,9 @@ function ProjectsAndVariations() {
       )}
 
       {showAddStage && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowAddStage(null)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={closeStageModal}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 420, padding: 26 }}>
-            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>New Stage — {showAddStageProject?.projectCode}</div>
+            <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 18 }}>{editingStageId ? "Edit Stage" : "New Stage"} — {showAddStageProject?.projectCode}</div>
             <div style={{ marginBottom: 12 }}>
               <div style={{ color: C.grey, fontSize: 11, marginBottom: 6 }}>Stage Code</div>
               <input
@@ -1037,7 +1061,7 @@ function ProjectsAndVariations() {
               <button onClick={submitStage} disabled={savingStage} style={{ flex: 1, background: C.amber, color: "#1a1400", border: "none", borderRadius: 8, padding: "11px 0", fontWeight: 700, cursor: "pointer", opacity: savingStage ? 0.6 : 1 }}>
                 {savingStage ? "Saving…" : "Save Stage"}
               </button>
-              <button onClick={() => setShowAddStage(null)} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+              <button onClick={closeStageModal} style={{ flex: 1, background: "transparent", border: `1px solid ${C.border}`, color: C.grey, borderRadius: 8, padding: "11px 0", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         </div>

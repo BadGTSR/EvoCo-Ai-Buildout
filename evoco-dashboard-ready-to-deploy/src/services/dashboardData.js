@@ -91,6 +91,10 @@ export async function restoreProject(projectId) {
   return updateDoc(doc(db, "projects", projectId), { status: "active", deletedAt: null, archivedAt: null });
 }
 
+export async function updateStage(projectId, stageId, { stageCode, stageName }) {
+  return updateDoc(doc(db, "projects", projectId, "stages", stageId), { stageCode: stageCode.trim(), stageName: stageName.trim() });
+}
+
 export async function deleteStage(projectId, stageId) {
   return deleteDoc(doc(db, "projects", projectId, "stages", stageId));
 }
