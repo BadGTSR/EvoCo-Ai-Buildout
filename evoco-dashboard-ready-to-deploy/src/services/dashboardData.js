@@ -26,10 +26,20 @@ export async function getProjects() {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-/** The standard stage list copied onto every new project. Stored at settings/stageTemplate. */
+export const DEFAULT_STAGES = [
+  { stageCode: "O1", stageName: "Preliminaries & General" },
+  { stageCode: "O2", stageName: "Structure" },
+  { stageCode: "O3", stageName: "Interior" },
+  { stageCode: "O4", stageName: "Exterior" },
+  { stageCode: "O5", stageName: "On-Site Works" },
+  { stageCode: "O6", stageName: "Transport Installation" },
+];
+
+/** The standard stage list added to every new project. Stored at settings/stageTemplate; falls back to DEFAULT_STAGES until edited and saved. */
 export async function getStageTemplate() {
   const snap = await getDoc(doc(db, "settings", "stageTemplate"));
-  return snap.exists() ? snap.data().stages || [] : [];
+  const saved = snap.exists() ? snap.data().stages || [] : [];
+  return saved.length > 0 ? saved : DEFAULT_STAGES;
 }
 
 export async function saveStageTemplate(stages) {

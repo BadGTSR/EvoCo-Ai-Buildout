@@ -708,12 +708,6 @@ function ProjectsAndVariations() {
   const updateTemplateRow = (i, field, value) =>
     setTemplateRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
 
-  const copyTemplateFrom = async (projectId) => {
-    if (!projectId) return;
-    const stages = await api.getStagesForProject(projectId);
-    setTemplateRows(stages.filter((s) => !s.isVariation).map((s) => ({ stageCode: s.stageCode, stageName: s.stageName })));
-  };
-
   const saveTemplate = async () => {
     const rows = templateRows.filter((r) => r.stageCode.trim() || r.stageName.trim());
     if (rows.some((r) => !r.stageCode.trim() || !r.stageName.trim())) {
@@ -889,17 +883,7 @@ function ProjectsAndVariations() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }} onClick={() => setShowTemplate(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: C.bgPanel, border: `1px solid ${C.border}`, borderRadius: 14, width: 520, maxHeight: "85vh", overflowY: "auto", padding: 26 }}>
             <div style={{ color: C.white, fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Standard Stages</div>
-            <div style={{ color: C.grey, fontSize: 12, marginBottom: 16 }}>Copied onto every new project. Changing this doesn't affect existing projects.</div>
-            <select
-              value=""
-              onChange={(e) => copyTemplateFrom(e.target.value)}
-              style={{ width: "100%", background: C.bgCard, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", color: C.white, fontSize: 13, marginBottom: 14 }}
-            >
-              <option value="">Copy stages from an existing project…</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.projectCode} — {p.projectName}</option>
-              ))}
-            </select>
+            <div style={{ color: C.grey, fontSize: 12, marginBottom: 16 }}>Added automatically to every new project. Changing this doesn't affect existing projects.</div>
             {templateRows.map((r, i) => (
               <div key={i} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <input
